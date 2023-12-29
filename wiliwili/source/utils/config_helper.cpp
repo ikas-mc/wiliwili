@@ -886,8 +886,13 @@ std::string ProgramConfig::getConfigDir() {
 #else
 #ifdef _DEBUG
     char currentPathBuffer[PATH_MAX];
+#ifdef __WINRT__
+    std::string currentPath =std::string(getenv("LOCALAPPDATA"));
+#else
     std::string currentPath =
         getcwd(currentPathBuffer, sizeof(currentPathBuffer));
+#endif /* __WINRT__ */
+
 #ifdef _WIN32
     return currentPath + "\\config\\wiliwili";
 #else
@@ -919,6 +924,9 @@ void ProgramConfig::exit(char* argv[]) {
 #ifdef IOS
 #elif defined(PS4)
 #elif __PSV__
+#elif __WINRT__
+    winrt::Windows::ApplicationModel::Core::CoreApplication::RequestRestartAsync(winrt::to_hstring(""));
+    return;
 #elif defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
     if (!brls::DesktopPlatform::RESTART_APP) return;
 #ifdef __linux__
