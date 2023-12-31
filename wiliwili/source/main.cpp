@@ -31,6 +31,7 @@
 int main(int argc, char* argv[]) {
 #ifdef __WINRT__
     //fix string (pystring,json etc...)
+    //TODO @ikas
     setlocale(LC_ALL, ".utf8");
 
     //for xbox 
@@ -41,7 +42,7 @@ int main(int argc, char* argv[]) {
             args.Handled(true);
         });
 
-    //TODO 
+    //TODO use config @ikas
     brls::Logger::setLogLevel(brls::LogLevel::LOG_DEBUG);
     brls::Application::enableDebuggingView(false);
 
