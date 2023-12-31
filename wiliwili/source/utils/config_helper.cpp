@@ -40,6 +40,10 @@ extern in_addr_t secondary_dns;
 }
 #endif
 
+#ifdef __WINRT__
+#include <winrt/windows.applicationmodel.core.h>
+#endif
+
 #ifndef PATH_MAX
 #define PATH_MAX 256
 #endif
@@ -925,6 +929,7 @@ void ProgramConfig::exit(char* argv[]) {
 #elif defined(PS4)
 #elif __PSV__
 #elif __WINRT__
+    if (!brls::DesktopPlatform::RESTART_APP) return;
     winrt::Windows::ApplicationModel::Core::CoreApplication::RequestRestartAsync(winrt::to_hstring(""));
     return;
 #elif defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
