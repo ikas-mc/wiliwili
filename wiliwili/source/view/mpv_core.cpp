@@ -1,7 +1,7 @@
 //
 // Created by fang on 2022/8/12.
 //
-
+#ifndef __PLAYER_WINRT__
 #include <cstdlib>
 #include <clocale>
 #include "view/mpv_core.hpp"
@@ -1153,3 +1153,4 @@ void MPVCore::clearShader(bool showHint) {
 void MPVCore::showOsdText(const std::string &value, int d) {
     command_async("show-text", value, d);
 }
+#endif /*__PLAYER_WINRT__*/

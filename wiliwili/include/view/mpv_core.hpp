@@ -6,8 +6,35 @@
 
 #include <borealis.hpp>
 #include <borealis/core/singleton.hpp>
+#ifndef __PLAYER_WINRT__
 #include <mpv/client.h>
 #include <mpv/render.h>
+#else
+typedef struct mpv_node {
+    union {
+        char *string;   /** valid if format==MPV_FORMAT_STRING */
+        int flag;       /** valid if format==MPV_FORMAT_FLAG   */
+        int64_t int64;  /** valid if format==MPV_FORMAT_INT64  */
+        double double_; /** valid if format==MPV_FORMAT_DOUBLE */
+    } u;
+} mpv_node;
+
+//mpv_error_code
+#define MPV_ERROR_UNKNOWN_FORMAT 1
+#define MPV_ERROR_LOADING_FAILED 2
+
+
+#include <winrt/Windows.Media.Playback.h>
+#include <winrt/Windows.Media.Core.h>
+#include "player/HttpRandomAccessStream.h"
+
+static inline std::string mpv_error_string(int status) {
+    return std::format("error :{}",status);
+}
+
+
+
+#endif
 #include <fmt/format.h>
 #if defined(MPV_SW_RENDER)
 #elif defined(BOREALIS_USE_DEKO3D)
@@ -193,9 +220,11 @@ public:
      */
     void draw(brls::Rect rect, float alpha = 1.0);
 
+#ifndef __PLAYER_WINRT__
     mpv_render_context *getContext();
 
     mpv_handle *getHandle();
+#endif
 
     /**
      * 播放器内部事件
@@ -220,7 +249,7 @@ public:
                    bool showHint = true);
 
     void clearShader(bool showHint = true);
-
+#ifndef __PLAYER_WINRT__
     /// Send command to mpv
     template <typename... Args>
     void command_async(Args &&...args) {
@@ -241,6 +270,14 @@ public:
         mpv_command_async(mpv, 0, res.data());
     }
 
+#else
+     /// Send command to mpv
+    template <typename... Args>
+    void command_async(Args &&...args) {
+        std::vector<std::string> commands = {
+            fmt::format("{}", std::forward<Args>(args))...};
+    }    
+#endif
     // core states
     int64_t duration       = 0;  // second
     int64_t cache_speed    = 0;  // Bps
@@ -290,6 +327,7 @@ public:
     inline static std::string VIDEO_ASPECT = "-1";
 
 private:
+#ifndef __PLAYER_WINRT__
     mpv_handle *mpv                 = nullptr;
     mpv_render_context *mpv_context = nullptr;
     brls::Rect rect                 = {0, 0, 1920, 1080};
@@ -344,7 +382,7 @@ private:
                           0.0f, 1.0f,  0.0f, -1.0f, -1.0f, 0.0f, 0.0f,
                           0.0f, -1.0f, 1.0f, 0.0f,  0.0f,  1.0f};
 #endif
-
+#endif
     // MPV 内部事件，传递内容为: 事件类型
     MPVEvent mpvCoreEvent;
 
@@ -376,4 +414,30 @@ private:
     static void on_update(void *self);
 
     static void on_wakeup(void *self);
+
+#ifdef __PLAYER_WINRT__
+
+    winrt::Windows::Media::Playback::MediaPlayer mediaPlayer { nullptr };
+    winrt::Windows::Media::Playback::MediaPlayer mediaPlayer2 { nullptr };
+    int sourceType;//1 mp4,2 dash
+
+    void PlayerVolumeChanged(const winrt::Windows::Media::Playback::MediaPlayer& player, const winrt::Windows::Foundation::IInspectable& value);
+    
+    void PlaybackStateChanged(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
+
+    void PositionChanged(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
+
+    void MediaEnded(winrt::Windows::Media::Playback::MediaPlayer,winrt::Windows::Foundation::IInspectable const& value);
+
+    void OnVideoFrameAvailable(winrt::Windows::Media::Playback::MediaPlayer sender, winrt::Windows::Foundation::IInspectable arg);
+
+
+    int lastFrameWidth = 0;
+    int lastFrameHeight = 0;
+
+    int nvg_image   = 0;
+
+    winrt::com_ptr<HttpRandomAccessStream> videoSource {nullptr };
+    winrt::com_ptr<HttpRandomAccessStream> audioSource {nullptr };
+#endif
 };
