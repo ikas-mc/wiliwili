@@ -22,19 +22,50 @@
 #include <SDL2/SDL_main.h>
 #endif
 
+#ifdef __WINRT__
+#include <winrt/Windows.UI.Core.h>
+#include <winrt/Windows.ApplicationModel.Core.h>
+#include <winrt/Windows.Storage.Streams.h>
+#endif
+
 int main(int argc, char* argv[]) {
+#ifdef __WINRT__
+    //fix string (pystring,json etc...)
+    setlocale(LC_ALL, ".utf8");
+
+    //for xbox 
+    winrt::Windows::UI::Core::SystemNavigationManager::GetForCurrentView().BackRequested([] (
+        winrt::Windows::Foundation::IInspectable const& sender,
+        winrt::Windows::UI::Core::BackRequestedEventArgs const& args
+        ){
+            args.Handled(true);
+        });
+
+    //TODO 
+    brls::Logger::setLogLevel(brls::LogLevel::LOG_DEBUG);
+    brls::Application::enableDebuggingView(false);
+
+    auto appLocal = winrt::Windows::Storage::AppDataPaths::GetDefault().LocalAppData();
+    auto logFile = std::format("{}\\wiliwili.log", winrt::to_string(appLocal));
+    brls::Logger::setLogOutput(std::fopen(logFile.c_str(), "w+"));
+    
+#else
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "-d") == 0) {
             brls::Logger::setLogLevel(brls::LogLevel::LOG_DEBUG);
-        } else if (std::strcmp(argv[i], "-v") == 0) {
+        }
+        else if (std::strcmp(argv[i], "-v") == 0) {
             brls::Application::enableDebuggingView(true);
-        } else if (std::strcmp(argv[i], "-t") == 0) {
+        }
+        else if (std::strcmp(argv[i], "-t") == 0) {
             MPVCore::TERMINAL = true;
-        } else if (std::strcmp(argv[i], "-o") == 0) {
+        }
+        else if (std::strcmp(argv[i], "-o") == 0) {
             const char* path = (i + 1 < argc) ? argv[++i] : "wiliwili.log";
             brls::Logger::setLogOutput(std::fopen(path, "w+"));
         }
     }
+#endif
 
     // Load cookies and settings
     ProgramConfig::instance().init();
