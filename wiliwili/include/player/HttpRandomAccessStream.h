@@ -1,4 +1,5 @@
 #pragma once
+#ifdef __PLAYER_WINRT__
 #include <winrt/base.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Storage.Streams.h>
@@ -36,3 +37,4 @@ private:
    
     winrt::Windows::Foundation::IAsyncAction SendHttpRequestAsync(_In_ uint64_t startPosition, _In_ uint32_t requestedSizeInBytes);
     };
+#endif /*__PLAYER_WINRT__*/

@@ -1,7 +1,7 @@
 //
 // Created by ikas on 2023/12/26.
 //
-
+#ifdef __PLAYER_WINRT__
 #include "player/HttpRandomAccessStream.h"
 #include <winrt/base.h>
 #include <winrt/windows.web.http.headers.h>
@@ -69,7 +69,18 @@ IAsyncOperationWithProgress<IBuffer, uint32_t> HttpRandomAccessStream::ReadAsync
 	if (!inputStream) {
 		co_await SendHttpRequestAsync(m_requestedPosition, -1);
 	}
-	co_return co_await this->inputStream.ReadAsync(buffer, count, options);
+
+	if (m_requestedPosition > m_size - 1) {
+		co_return buffer;
+	}
+
+	if (m_requestedPosition + count > m_size) {
+		count = m_size - m_requestedPosition;
+	}
+
+	winrt::Windows::Storage::Streams::IBuffer data= co_await this->inputStream.ReadAsync(buffer, count, options);
+	m_requestedPosition += data.Length();
+	co_return data;
 }
 
 
@@ -152,7 +163,8 @@ IAsyncAction HttpRandomAccessStream::SendHttpRequestAsync(_In_ uint64_t startPos
 				break;
 			}
 			default: {
-				throw;
+				//throw;
 			}
 		}
 }
+#endif /*__PLAYER_WINRT__*/
