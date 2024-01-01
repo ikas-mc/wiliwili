@@ -419,13 +419,17 @@ private:
 
     winrt::Windows::Media::Playback::MediaPlayer mediaPlayer { nullptr };
     winrt::Windows::Media::Playback::MediaPlayer mediaPlayer2 { nullptr };
-    int sourceType;//1 mp4,2 dash
+    int sourceType;//1 mp4,2 dash,3 m3u8
 
     void PlayerVolumeChanged(const winrt::Windows::Media::Playback::MediaPlayer& player, const winrt::Windows::Foundation::IInspectable& value);
     
     void PlaybackStateChanged(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
 
     void PositionChanged(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
+
+    void BufferingStarted(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
+
+    void BufferingEnded(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
 
     void MediaEnded(winrt::Windows::Media::Playback::MediaPlayer,winrt::Windows::Foundation::IInspectable const& value);
 
