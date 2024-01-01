@@ -20,7 +20,6 @@
 #include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.Web.Http.Headers.h>
 #include <winrt/Windows.Web.Http.h>
-#include <winrt/Windows.UI.Composition.h>
 
 #include "player/HttpRandomAccessStream.h"
 
@@ -429,23 +428,27 @@ void MPVCore::stop() {
 }
 
 void MPVCore::seek(int64_t p) {
-    mediaPlayer.PlaybackSession().Position(std::chrono::seconds(static_cast<int64_t>(p)));
-    if (sourceType == 2) {
-        mediaPlayer2.PlaybackSession().Position(mediaPlayer.PlaybackSession().Position());
+    if (p < duration) {
+        mediaPlayer.PlaybackSession().Position(std::chrono::seconds(static_cast<int64_t>(p)));
+        if (sourceType == 2) {
+            mediaPlayer2.PlaybackSession().Position(mediaPlayer.PlaybackSession().Position());
+        }
     }
 }
 
 void MPVCore::seek(const std::string &p) {
-   // command_async("seek", p, "absolute");
+    auto position = std::stoll(p);
+    seek(p);
 }
 
-void MPVCore::seekRelative(int64_t p) {  }
+void MPVCore::seekRelative(int64_t p) {
+    auto position = static_cast<int64_t>(playback_time + p);
+    seek(position);
+}
 
 void MPVCore::seekPercent(double p) {
-    mediaPlayer.PlaybackSession().Position(std::chrono::seconds(static_cast<int64_t>(duration * p)));
-    if (sourceType == 2) {
-        mediaPlayer2.PlaybackSession().Position(mediaPlayer.PlaybackSession().Position());
-    }
+    auto position = static_cast<int64_t>(duration * p);
+    seek(position);
 }
 
 bool MPVCore::isStopped() const { return video_stopped; }
@@ -465,8 +468,8 @@ void MPVCore::setSpeed(double value) {
 
 void MPVCore::setAspect(const std::string &value) {
     MPVCore::VIDEO_ASPECT = value;
-    video_aspect          = aspectConverter(MPVCore::VIDEO_ASPECT);
-
+    //video_aspect          = aspectConverter(MPVCore::VIDEO_ASPECT);
+    //TODO 
 }
 
 std::string MPVCore::getString(const std::string &key) {
@@ -567,7 +570,9 @@ void MPVCore::PositionChanged(const winrt::Windows::Media::Playback::MediaPlayba
 }
 
 void MPVCore::MediaEnded(winrt::Windows::Media::Playback::MediaPlayer , winrt::Windows::Foundation::IInspectable const& value) {
-    mpvCoreEvent.fire(MpvEventEnum::END_OF_FILE);
+    brls::delay(200, [this] {
+        mpvCoreEvent.fire(MpvEventEnum::END_OF_FILE);
+    });
 }
 
 #endif /*__PLAYER_WINRT__*/
