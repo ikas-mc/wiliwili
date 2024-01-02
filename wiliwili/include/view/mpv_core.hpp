@@ -418,7 +418,6 @@ private:
 #ifdef __PLAYER_WINRT__
 
     winrt::Windows::Media::Playback::MediaPlayer mediaPlayer { nullptr };
-    winrt::Windows::Media::Playback::MediaPlayer mediaPlayer2 { nullptr };
     int sourceType;//1 mp4,2 dash,3 m3u8
 
     void PlayerVolumeChanged(const winrt::Windows::Media::Playback::MediaPlayer& player, const winrt::Windows::Foundation::IInspectable& value);
@@ -435,13 +434,11 @@ private:
 
     void OnVideoFrameAvailable(winrt::Windows::Media::Playback::MediaPlayer sender, winrt::Windows::Foundation::IInspectable arg);
 
-
     int lastFrameWidth = 0;
     int lastFrameHeight = 0;
 
     int nvg_image   = 0;
 
     winrt::com_ptr<HttpRandomAccessStream> videoSource {nullptr };
-    winrt::com_ptr<HttpRandomAccessStream> audioSource {nullptr };
 #endif
 };

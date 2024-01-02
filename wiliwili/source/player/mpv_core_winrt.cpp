@@ -92,11 +92,6 @@ void MPVCore::init() {
 	mediaPlayer.PlaybackSession().BufferingEnded({ this, &MPVCore::BufferingEnded });
 	mediaPlayer.MediaEnded({ this,&MPVCore::MediaEnded });
 
-	//for test
-	//TODO remove, ikas
-	mediaPlayer2 = winrt::Windows::Media::Playback::MediaPlayer();
-	mediaPlayer2.CommandManager().IsEnabled(false);
-
 	if (MPVCore::VIDEO_ASPECT != "-1") {
 		video_aspect = aspectConverter(MPVCore::VIDEO_ASPECT);
 	}
@@ -138,7 +133,6 @@ void MPVCore::init() {
 
 MPVCore::~MPVCore() {
 	this->mediaPlayer = nullptr;
-	this->mediaPlayer2 = nullptr;
 };
 
 void MPVCore::clean() {
@@ -148,7 +142,6 @@ void MPVCore::clean() {
 	this->uninitializeVideo();
 
 	this->videoSource = nullptr;
-	this->audioSource = nullptr;
 }
 
 void MPVCore::restart() {
@@ -164,88 +157,97 @@ void MPVCore::initializeVideo() {
 }
 
 void MPVCore::setFrameSize(brls::Rect r) {
-	if (isnan(r.getWidth()) || isnan(r.getHeight())) return;
+	//rect = r;
+	//if (isnan(r.getWidth()) || isnan(r.getHeight())) return;
 }
 
 bool MPVCore::isValid() { return true; }
 
 void MPVCore::draw(brls::Rect area, float alpha) {
-	auto rect = area;
-
-	int drawWidth = rect.getWidth() * brls::Application::windowScale;
-	int drawHeight = rect.getHeight() * brls::Application::windowScale;
-	if (drawWidth == 0 || drawHeight == 0)
-		return;
-
-	auto x = (int)mediaPlayer.PlaybackSession().PlaybackState();
-	if (x != 3) {
-		return;
-	}
-
-	if (!this->video_playing) {
-		return;
-	}
+	//brls::Logger::debug("MPVCore draw");
+	//if (!(this->rect == area)) {
+	//	setFrameSize(area);
+	//}
 
 	auto* vg = brls::Application::getNVGContext();
 
-	//copy frame
-	//TODO copy in OnVideoFrameAvailable, @ikas
-	concurrency::create_task([&] {
-		//create frame
-		auto videoWidth = mediaPlayer.PlaybackSession().NaturalVideoWidth();
-		auto videoHeight = mediaPlayer.PlaybackSession().NaturalVideoHeight();
+	if (mediaPlayer.PlaybackSession().PlaybackState() == winrt::Windows::Media::Playback::MediaPlaybackState::Playing) {
+		//copy frame
+		//TODO copy in OnVideoFrameAvailable, @ikas
+		concurrency::create_task([&] {
+			brls::Logger::debug("MPVCore copy image");
+			//create frame
+			auto videoWidth = mediaPlayer.PlaybackSession().NaturalVideoWidth();
+			auto videoHeight = mediaPlayer.PlaybackSession().NaturalVideoHeight();
 
-		auto videoFrame = winrt::Windows::Media::VideoFrame::CreateAsDirect3D11SurfaceBacked(winrt::Windows::Graphics::DirectX::DirectXPixelFormat::R8G8B8A8UIntNormalized, videoWidth, videoHeight);
-		mediaPlayer.CopyFrameToVideoSurface(videoFrame.Direct3DSurface());
+			auto videoFrame = winrt::Windows::Media::VideoFrame::CreateAsDirect3D11SurfaceBacked(winrt::Windows::Graphics::DirectX::DirectXPixelFormat::R8G8B8A8UIntNormalized, videoWidth, videoHeight);
+			mediaPlayer.CopyFrameToVideoSurface(videoFrame.Direct3DSurface());
 
-		auto softwareBitmap = winrt::Windows::Graphics::Imaging::SoftwareBitmap::CreateCopyFromSurfaceAsync(videoFrame.Direct3DSurface()).get();
-		auto buffer = softwareBitmap.LockBuffer(winrt::Windows::Graphics::Imaging::BitmapBufferAccessMode::Read);
-		uint8_t* pixels = buffer.CreateReference().data();
+			auto softwareBitmap = winrt::Windows::Graphics::Imaging::SoftwareBitmap::CreateCopyFromSurfaceAsync(videoFrame.Direct3DSurface()).get();
+			auto buffer = softwareBitmap.LockBuffer(winrt::Windows::Graphics::Imaging::BitmapBufferAccessMode::Read);
+			uint8_t* pixels = buffer.CreateReference().data();
 
-		//update frame data
-		auto currentFrameWidth = softwareBitmap.PixelWidth();
-		auto currentFrameHeight = softwareBitmap.PixelHeight();
-		if (!nvg_image || currentFrameWidth != lastFrameWidth || currentFrameHeight != lastFrameHeight) {
-			lastFrameWidth = currentFrameWidth;
-			lastFrameHeight = currentFrameHeight;
-			auto mpvImageFlags = NVG_IMAGE_STREAMING | NVG_IMAGE_COPY_SWAP;
-			nvg_image = nvgCreateImageRGBA(vg, currentFrameWidth, currentFrameHeight, mpvImageFlags, (const unsigned char*)pixels);
+			//update frame data
+			auto currentFrameWidth = softwareBitmap.PixelWidth();
+			auto currentFrameHeight = softwareBitmap.PixelHeight();
+			if (!nvg_image || currentFrameWidth != lastFrameWidth || currentFrameHeight != lastFrameHeight) {
+				lastFrameWidth = currentFrameWidth;
+				lastFrameHeight = currentFrameHeight;
+				auto mpvImageFlags = NVG_IMAGE_STREAMING | NVG_IMAGE_COPY_SWAP;
+				if (nvg_image) {
+					nvgDeleteImage(vg, nvg_image);
+					nvg_image = 0;
+				}
+				nvg_image = nvgCreateImageRGBA(vg, currentFrameWidth, currentFrameHeight, mpvImageFlags, (const unsigned char*)pixels);
+
+			}
+			else {
+				nvgUpdateImage(vg, nvg_image, (const unsigned char*)pixels);
+			}
+
+			}).wait();
+	}
+	else {
+		if (lastFrameWidth == 0 && lastFrameHeight ==0 && nvg_image) {
+			nvgDeleteImage(vg, nvg_image);
+			nvg_image = 0;
 		}
-		else {
-			nvgUpdateImage(vg, nvg_image, (const unsigned char*)pixels);
-		}
+	}
 
-		}).wait();
+	// draw black background
+	//brls::Logger::debug("MPVCore draw background");
+	nvgBeginPath(vg);
+	NVGcolor bg{};
+	bg.a = alpha;
+	nvgFillColor(vg, bg);
+	nvgRect(vg, area.getMinX(), area.getMinY(), area.getWidth(), area.getHeight());
+	nvgFill(vg);
 
-		// draw black background
-		nvgBeginPath(vg);
-		NVGcolor bg{};
-		bg.a = alpha;
-		nvgFillColor(vg, bg);
-		nvgRect(vg, rect.getMinX(), rect.getMinY(), rect.getWidth(), rect.getHeight());
-		nvgFill(vg);
+	if (!nvg_image) {
+		return;
+	}
+	//draw image
+	//brls::Logger::debug("MPVCore draw image ");
+	//target  size
+	int targetWidth;
+	int targetHeight;
+	int viewWidth = area.getWidth();
+	int viewHeight = area.getHeight();
+	if (MulDiv2(lastFrameWidth, viewHeight, lastFrameHeight) <= viewWidth) {
+		targetWidth = MulDiv2(viewHeight, lastFrameWidth, lastFrameHeight);
+		targetHeight = viewHeight;
+	}
+	else {
+		targetWidth = viewWidth;
+		targetHeight = MulDiv2(viewWidth, lastFrameHeight, lastFrameWidth);
+	}
+	auto targetX = area.getMinX() + ((viewWidth - targetWidth) / 2);
+	auto targetY = area.getMinY() + ((viewHeight - targetHeight) / 2);
 
-		//target  size
-		int targetWidth;
-		int targetHeight;
-		int viewWidth = rect.getWidth();
-		int viewHeight = rect.getHeight();
-		if (MulDiv2(lastFrameWidth, viewHeight, lastFrameHeight) <= viewWidth) {
-			targetWidth = MulDiv2(viewHeight, lastFrameWidth, lastFrameHeight);
-			targetHeight = viewHeight;
-		}
-		else {
-			targetWidth = viewWidth;
-			targetHeight = MulDiv2(viewWidth, lastFrameHeight, lastFrameWidth);
-		}
-		auto targetX = rect.getMinX() + ((viewWidth - targetWidth) / 2);
-		auto targetY = rect.getMinY() + ((viewHeight - targetHeight) / 2);
-
-		// draw video
-		nvgBeginPath(vg);
-		nvgRect(vg, targetX, targetY, targetWidth, targetHeight);
-		nvgFillPaint(vg, nvgImagePattern(vg, targetX, targetY, targetWidth, targetHeight, 0, nvg_image, alpha));
-		nvgFill(vg);
+	nvgBeginPath(vg);
+	nvgRect(vg, targetX, targetY, targetWidth, targetHeight);
+	nvgFillPaint(vg, nvgImagePattern(vg, targetX, targetY, targetWidth, targetHeight, 0, nvg_image, alpha));
+	nvgFill(vg);
 }
 
 MPVEvent* MPVCore::getEvent() { return &this->mpvCoreEvent; }
@@ -279,6 +281,9 @@ void MPVCore::reset() {
 	this->mpv_error_code = 0;
 
 	mediaPlayer.Source(nullptr);
+	lastFrameWidth = 0;
+	lastFrameHeight = 0;
+
 	// 软硬解切换后应该手动设置一次渲染尺寸
 	// 切换视频前设置渲染尺寸可以顺便将上一条视频的最后一帧画面清空
 	//setFrameSize(rect);
@@ -328,30 +333,8 @@ void MPVCore::setUrl(const std::string& url, const std::string& extra,
 				if (videoHttpAccessStream) {
 					mediaPlayer.SetStreamSource(videoHttpAccessStream);
 					videoSource = videoHttpStream;
+					mediaPlayer.Play();
 				}
-				else {
-					loadResult = false;
-				}
-			}
-
-			if (loadResult) {
-				auto audioHttpStream = winrt::make_self<HttpRandomAccessStream>(audioUrl);
-				loadResult = audioHttpStream->LoadAsync().get();
-				if (loadResult) {
-					auto audioHttpAccessStream = audioHttpStream.try_as<winrt::Windows::Storage::Streams::IRandomAccessStream>();
-					if (audioHttpAccessStream) {
-						mediaPlayer2.SetStreamSource(audioHttpAccessStream);
-						audioSource = audioHttpStream;
-					}
-					else {
-						loadResult = false;
-					}
-				}
-			}
-
-			if (loadResult) {
-				mediaPlayer.Play();
-				mediaPlayer2.Play();
 			}
 
 			/*
@@ -421,17 +404,11 @@ void MPVCore::setVolume(int64_t value) {
 	};
 	MPVCore::VIDEO_VOLUME = (int)value;
 	mediaPlayer.Volume(value * 0.01);
-	if (sourceType == 2) {
-		mediaPlayer2.Volume(mediaPlayer.Volume());
-	}
 }
 
 void MPVCore::setVolume(const std::string& value) {
 	MPVCore::VIDEO_VOLUME = std::stoi(value);
 	mediaPlayer.Volume(MPVCore::VIDEO_VOLUME * 0.01);
-	if (sourceType == 2) {
-		mediaPlayer2.Volume(mediaPlayer.Volume());
-	}
 }
 
 int64_t MPVCore::getVolume() const {
@@ -440,28 +417,20 @@ int64_t MPVCore::getVolume() const {
 
 void MPVCore::resume() {
 	mediaPlayer.Play();
-	if (sourceType == 2) {
-		mediaPlayer2.Play();
-	}
 }
 
 void MPVCore::pause() {
 	mediaPlayer.Pause();
-	if (sourceType == 2) {
-		mediaPlayer2.Pause();
-	}
 }
 
 void MPVCore::stop() {
 	this->pause();
+	video_stopped = true;
 }
 
 void MPVCore::seek(int64_t p) {
 	if (p < duration) {
 		mediaPlayer.PlaybackSession().Position(std::chrono::seconds(static_cast<int64_t>(p)));
-		if (sourceType == 2) {
-			mediaPlayer2.PlaybackSession().Position(mediaPlayer.PlaybackSession().Position());
-		}
 	}
 }
 
@@ -490,9 +459,6 @@ double MPVCore::getSpeed() const { return video_speed; }
 
 void MPVCore::setSpeed(double value) {
 	mediaPlayer.PlaybackRate(value);
-	if (sourceType == 2) {
-		mediaPlayer2.PlaybackRate(mediaPlayer.PlaybackRate());
-	}
 }
 
 void MPVCore::setAspect(const std::string& value) {
@@ -562,24 +528,25 @@ void MPVCore::PlaybackStateChanged(const winrt::Windows::Media::Playback::MediaP
 		video_paused = false;
 		video_stopped = false;
 		mpvCoreEvent.fire(MpvEventEnum::MPV_RESUME);
+		mpvCoreEvent.fire(MpvEventEnum::MPV_IDLE);
 		disableDimming(true);
 	}
 	else if (session.PlaybackState() == winrt::Windows::Media::Playback::MediaPlaybackState::Buffering) {
-		video_playing = true;
-		mpvCoreEvent.fire(MpvEventEnum::LOADING_START);
-		disableDimming(false);
+		//video_playing = true;
+		//mpvCoreEvent.fire(MpvEventEnum::LOADING_START);
+		//disableDimming(false);
 	}
 	else if (session.PlaybackState() == winrt::Windows::Media::Playback::MediaPlaybackState::Opening) {
-		video_playing = true;
-		mpvCoreEvent.fire(MpvEventEnum::LOADING_START);
-		disableDimming(false);
+		//video_playing = true;
+		//mpvCoreEvent.fire(MpvEventEnum::LOADING_START);
+		//disableDimming(false);
 	}
 	else if (session.PlaybackState() == winrt::Windows::Media::Playback::MediaPlaybackState::Paused) {
 		video_playing = false;
 		video_paused = true;
-		video_stopped = false;
-		mpvCoreEvent.fire(MpvEventEnum::MPV_PAUSE);
+		//video_stopped = false;
 		disableDimming(false);
+		mpvCoreEvent.fire(MpvEventEnum::MPV_PAUSE);
 		mpvCoreEvent.fire(MpvEventEnum::MPV_IDLE);
 	}
 }
@@ -594,21 +561,21 @@ void MPVCore::PositionChanged(const winrt::Windows::Media::Playback::MediaPlayba
 		mpvCoreEvent.fire(MpvEventEnum::UPDATE_DURATION);
 	}
 
-	//if (std::abs(this->video_progress - this->playback_time) > 1) {
-	this->video_speed = session.PlaybackRate();
-	this->video_progress = (int64_t)this->playback_time;
-	mpvCoreEvent.fire(MpvEventEnum::UPDATE_PROGRESS);
-	//}
+	if (std::abs(this->video_progress - this->playback_time) > 1) {
+		this->video_speed = session.PlaybackRate();
+		this->video_progress = (int64_t)this->playback_time;
+		mpvCoreEvent.fire(MpvEventEnum::UPDATE_PROGRESS);
+	}
 }
 
 void MPVCore::BufferingStarted(const winrt::Windows::Media::Playback::MediaPlaybackSession& session,
 	const winrt::Windows::Foundation::IInspectable& value) {
 	// event 8: 文件预加载结束，准备解码
-	mpvCoreEvent.fire(MpvEventEnum::MPV_LOADED);
+	//mpvCoreEvent.fire(MpvEventEnum::MPV_LOADED);
 	// event 6: 开始加载文件
 	brls::Logger::info("========> MPV_EVENT_START_FILE");
 	// show osd for a really long time
-	mpvCoreEvent.fire(MpvEventEnum::START_FILE);
+	//mpvCoreEvent.fire(MpvEventEnum::START_FILE);
 	mpvCoreEvent.fire(MpvEventEnum::LOADING_START);
 }
 
@@ -619,23 +586,23 @@ void MPVCore::BufferingEnded(const winrt::Windows::Media::Playback::MediaPlaybac
 
 	mpvCoreEvent.fire(MpvEventEnum::LOADING_END);
 	if (AUTO_PLAY) {
-		mpvCoreEvent.fire(MpvEventEnum::MPV_RESUME);
-		this->resume();
+		//mpvCoreEvent.fire(MpvEventEnum::MPV_RESUME);
+		//this->resume();
 	}
 	else {
-		mpvCoreEvent.fire(MpvEventEnum::MPV_PAUSE);
-		this->pause();
+		//mpvCoreEvent.fire(MpvEventEnum::MPV_PAUSE);
+		//this->pause();
 	}
 }
 
 void MPVCore::MediaEnded(winrt::Windows::Media::Playback::MediaPlayer, winrt::Windows::Foundation::IInspectable const& value) {
 	// event 7: 文件播放结束
 	brls::Logger::info("========> MPV_STOP");
+	video_stopped = true;
 
 	brls::delay(200, [this] {
 		mpvCoreEvent.fire(MpvEventEnum::MPV_STOP);
 		mpvCoreEvent.fire(MpvEventEnum::END_OF_FILE);
-		video_stopped = true;
 		//TODO
 		});
 }
