@@ -369,6 +369,9 @@ VideoView::VideoView() {
     /// 播放器设置按钮
     this->btnSettingIcon->getParent()->registerClickAction([this](...) {
         auto setting = new PlayerSetting();
+
+        setting->setBangumiCustomSetting(bangumiTitle, bangumiSeasonId);
+
         // 不显示弹幕则认为不是在播放B站视频，此时隐藏设置菜单中的上传历史记录
         if (!showHistorySetting) {
             setting->hideHistoryCell();
@@ -384,6 +387,9 @@ VideoView::VideoView() {
         }
         if (!showHighlightLineSetting) {
             setting->hideHighlightLineCells();
+        }
+        if (!showOpeningCreditsSetting) {
+            setting->hideSkipOpeningCreditsSetting();
         }
         brls::Application::pushActivity(new Activity(setting));
         // 手动将焦点赋给设置页面
@@ -520,32 +526,35 @@ VideoView::VideoView() {
                          });
 
     // 自定义的mpv事件
-    customEventSubscribeID = MPV_CE->subscribe([this](const std::string& event,
-                                                      void* data) {
-        if (event == VideoView::SET_TITLE) {
-            this->setTitle((const char*)data);
-        } else if (event == VideoView::SET_ONLINE_NUM) {
-            this->setOnlineCount((const char*)data);
-        } else if (event == VideoView::SET_QUALITY) {
-            this->setQuality((const char*)data);
-        } else if (event == VideoView::REAL_DURATION) {
-            this->real_duration = *(int*)data;
-            this->setDuration(wiliwili::sec2Time(real_duration));
-            this->setProgress((float)mpvCore->playback_time /
-                              (float)real_duration);
-        } else if (event == VideoView::LAST_TIME) {
-            if (this->getLastPlayedPosition() != VideoView::POSITION_DISCARD)
-                this->setLastPlayedPosition(*(int64_t*)data / 1000);
-        } else if (event == VideoView::HINT) {
-            this->showHint((const char*)data);
-        } else if (event == VideoView::CLIP_INFO) {
-            osdSlider->addClipPoint(*(float*)data);
-        } else if (event == VideoView::REPLAY) {
-            // 显示重播按钮
-            showReplay = true;
-            this->refreshToggleIcon();
-        }
-    });
+    customEventSubscribeID =
+        MPV_CE->subscribe([this](const std::string& event, void* data) {
+            if (event == VideoView::SET_TITLE) {
+                this->setTitle((const char*)data);
+            } else if (event == VideoView::SET_ONLINE_NUM) {
+                this->setOnlineCount((const char*)data);
+            } else if (event == VideoView::SET_QUALITY) {
+                this->setQuality((const char*)data);
+            } else if (event == VideoView::REAL_DURATION) {
+                this->real_duration = *(int*)data;
+                this->setDuration(wiliwili::sec2Time(real_duration));
+                this->setProgress((float)mpvCore->playback_time /
+                                  (float)real_duration);
+            } else if (event == VideoView::LAST_TIME) {
+                if (*(int64_t*)data == VideoView::POSITION_DISCARD)
+                    this->setLastPlayedPosition(VideoView::POSITION_DISCARD);
+                else if (this->getLastPlayedPosition() !=
+                         VideoView::POSITION_DISCARD)
+                    this->setLastPlayedPosition(*(int64_t*)data / 1000);
+            } else if (event == VideoView::HINT) {
+                this->showHint((const char*)data);
+            } else if (event == VideoView::CLIP_INFO) {
+                osdSlider->addClipPoint(*(float*)data);
+            } else if (event == VideoView::REPLAY) {
+                // 显示重播按钮
+                showReplay = true;
+                this->refreshToggleIcon();
+            }
+        });
 }
 
 void VideoView::requestSeeking() {
@@ -607,10 +616,11 @@ void VideoView::draw(NVGcontext* vg, float x, float y, float width,
     // draw bottom bar
     if (BOTTOM_BAR && showBottomLineSetting) {
         bottomBarColor.a = alpha;
+        float progress   = mpvCore->playback_time / getRealDuration();
+        progress         = progress > 1.0f ? 1.0f : progress;
         nvgFillColor(vg, bottomBarColor);
         nvgBeginPath(vg);
-        nvgRect(vg, x, y + height - 2,
-                width * mpvCore->playback_time / getRealDuration(), 2);
+        nvgRect(vg, x, y + height - 2, width * progress, 2);
         nvgFill(vg);
     }
 
@@ -744,17 +754,17 @@ void VideoView::invalidate() { View::invalidate(); }
 
 void VideoView::onLayout() { brls::View::onLayout(); }
 
-std::string VideoView::genExtraUrlParam(int progress,
+std::string VideoView::genExtraUrlParam(int start, int end,
                                         const std::string& audio) {
     std::vector<std::string> audios;
     if (!audio.empty()) {
         audios.emplace_back(audio);
     }
-    return genExtraUrlParam(progress, audios);
+    return genExtraUrlParam(start, end, audios);
 }
 
 std::string VideoView::genExtraUrlParam(
-    int progress, const std::vector<std::string>& audios) {
+    int start, int end, const std::vector<std::string>& audios) {
     std::string extra =
 #ifdef __PSV__
         "referrer=\"https://www.bilibili.com\",network-timeout=10";
@@ -765,39 +775,43 @@ std::string VideoView::genExtraUrlParam(
     if (!proxy.empty()) {
         extra += fmt::format(",http-proxy=\"{}\"", proxy);
     }
-    if (progress > 0) {
-        extra += fmt::format(",rebase-start-time=no,start={}", progress);
+    if (start > 0) {
+        extra += fmt::format(",start={}", start);
+    }
+    if (end > 0) {
+        extra += fmt::format(",end={}", end);
     }
     for (auto& audio : audios)
         extra += fmt::format(",audio-file=\"{}\"", audio);
     return extra;
 }
 
-void VideoView::setUrl(const std::string& url, int progress,
+void VideoView::setUrl(const std::string& url, int start, int end,
                        const std::string& audio) {
     std::vector<std::string> audios;
     if (!audio.empty()) {
         audios.emplace_back(audio);
     }
-    setUrl(url, progress, audios);
+    setUrl(url, start, end, audios);
 }
 
-void VideoView::setUrl(const std::string& url, int progress,
+void VideoView::setUrl(const std::string& url, int start, int end,
                        const std::vector<std::string>& audios) {
-    mpvCore->setUrl(url, genExtraUrlParam(progress, audios));
+    mpvCore->setUrl(url, genExtraUrlParam(start, end, audios));
 }
 
-void VideoView::setBackupUrl(const std::string& url, int progress,
+void VideoView::setBackupUrl(const std::string& url, int start, int end,
                              const std::string& audio) {
-    setBackupUrl(url, progress, std::vector{audio});
+    setBackupUrl(url, start, end, std::vector{audio});
 }
 
-void VideoView::setBackupUrl(const std::string& url, int progress,
+void VideoView::setBackupUrl(const std::string& url, int start, int end,
                              const std::vector<std::string>& audios) {
-    mpvCore->setBackupUrl(url, genExtraUrlParam(progress, audios));
+    mpvCore->setBackupUrl(url, genExtraUrlParam(start, end, audios));
 }
 
-void VideoView::setUrl(const std::vector<EDLUrl>& edl_urls, int progress) {
+void VideoView::setUrl(const std::vector<EDLUrl>& edl_urls, int start,
+                       int end) {
     std::string url = "edl://";
     std::vector<std::string> urls;
     bool delay_open = true;
@@ -817,7 +831,7 @@ void VideoView::setUrl(const std::vector<EDLUrl>& edl_urls, int progress) {
             fmt::format("%{}%{},length={}", i.url.size(), i.url, i.length));
     }
     url += pystring::join(";", urls);
-    this->setUrl(url, progress);
+    this->setUrl(url, start, end);
 }
 
 void VideoView::resume() { mpvCore->resume(); }
@@ -985,6 +999,10 @@ void VideoView::hideBottomLineSetting() { showBottomLineSetting = false; }
 
 void VideoView::hideHighlightLineSetting() { showHighlightLineSetting = false; }
 
+void VideoView::hideSkipOpeningCreditsSetting() {
+    showOpeningCreditsSetting = false;
+}
+
 void VideoView::hideVideoProgressSlider() {
     osdSlider->setVisibility(brls::Visibility::GONE);
 }
@@ -1084,6 +1102,12 @@ void VideoView::clearHint() {
     this->hintBox->setVisibility(brls::Visibility::GONE);
 }
 
+void VideoView::setBangumiCustomSetting(const std::string& title,
+                                        unsigned int seasonId) {
+    this->bangumiTitle    = title;
+    this->bangumiSeasonId = seasonId;
+}
+
 View* VideoView::create() { return new VideoView(); }
 
 bool VideoView::isFullscreen() {
@@ -1122,8 +1146,11 @@ void VideoView::setFullScreen(bool fs) {
         video->setDuration(this->rightStatusLabel->getFullText());
         video->setPlaybackTime(this->leftStatusLabel->getFullText());
         video->setProgress(this->getProgress());
+        video->setBangumiCustomSetting(this->bangumiTitle,
+                                       this->bangumiSeasonId);
         if (this->hintBox->getVisibility() == brls::Visibility::VISIBLE)
             video->showHint(this->hintLabel->getFullText());
+        if (!showOpeningCreditsSetting) video->hideSkipOpeningCreditsSetting();
         video->showOSD(this->osd_state != OSDState::ALWAYS_ON);
         video->setFullscreenIcon(true);
         video->setHideHighlight(true);
@@ -1185,6 +1212,8 @@ void VideoView::setFullScreen(bool fs) {
                     video->real_duration = real_duration;
                     video->setLastPlayedPosition(lastPlayedPosition);
                     video->osdSlider->setClipPoint(osdSlider->getClipPoint());
+                    video->setBangumiCustomSetting(this->bangumiTitle,
+                                                   this->bangumiSeasonId);
                     video->refreshToggleIcon();
                     video->refreshDanmakuIcon();
                     video->setQuality(this->getQuality());
@@ -1346,7 +1375,7 @@ void VideoView::registerMpvEvent() {
                 case MpvEventEnum::MPV_LOADED:
                     this->setPlaybackTime(
                         wiliwili::sec2Time(this->mpvCore->video_progress));
-                    if (lastPlayedPosition <= 0 ) break;
+                    if (lastPlayedPosition <= 0) break;
                     if (abs(getRealDuration() - lastPlayedPosition) <= 5) {
                         mpvCore->seek(0);
                     } else {
@@ -1357,6 +1386,7 @@ void VideoView::registerMpvEvent() {
                         brls::Logger::info("Restore video position: {}",
                                            lastPlayedPosition);
                     }
+                    lastPlayedPosition = 0;
                     break;
                 case MpvEventEnum::UPDATE_DURATION:
                     this->setDuration(wiliwili::sec2Time(getRealDuration()));

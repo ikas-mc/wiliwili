@@ -43,6 +43,10 @@ public:
 
     void hideHighlightLineCells();
 
+    void hideSkipOpeningCreditsSetting();
+
+    void setBangumiCustomSetting(const std::string& title, unsigned int seasonId);
+
 private:
     BRLS_BIND(ButtonClose, closebtn, "button/close");
     BRLS_BIND(brls::ScrollingFrame, settings, "player/settings");
@@ -67,6 +71,19 @@ private:
     BRLS_BIND(SelectorCell, btnAspect, "setting/video/aspect");
     BRLS_BIND(brls::BooleanCell, btnHighlight, "setting/video/highlight");
     BRLS_BIND(brls::DetailCell, btnSleep, "setting/sleep");
+    BRLS_BIND(brls::BooleanCell, btnSkip, "setting/auto/skip");
+
+    // bangumi custom setting
+    BRLS_BIND(brls::Header, bangumiHeader, "setting/video/custom/header");
+    BRLS_BIND(brls::Box, bangumiBox, "setting/video/custom/box");
+    BRLS_BIND(SelectorCell, btnCustomAspect, "setting/video/custom/aspect");
+    BRLS_BIND(brls::BooleanCell, btnClip, "setting/video/custom/clip");
+    BRLS_BIND(brls::InputNumericCell, btnClipStart,
+              "setting/video/custom/clip/start");
+    BRLS_BIND(brls::InputNumericCell, btnClipEnd,
+              "setting/video/custom/clip/end");
+
+    unsigned int seasonId{};
 
     // 获取需要现实的倒计时关闭字符串
     static inline std::string getCountdown(size_t now);

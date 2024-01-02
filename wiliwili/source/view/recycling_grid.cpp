@@ -260,6 +260,8 @@ void RecyclingGrid::addCellAt(size_t index, int downSide) {
 void RecyclingGrid::setDataSource(RecyclingGridDataSource* source) {
     if (this->dataSource) delete this->dataSource;
 
+    // 允许自动加载下一页
+    this->requestNextPage = false;
     this->dataSource = source;
     if (layouted) reloadData();
 }
@@ -568,6 +570,8 @@ float RecyclingGrid::getHeightByCellIndex(size_t index, size_t start) {
     }
     return res;
 }
+
+void RecyclingGrid::forceRequestNextPage() { this->requestNextPage = false; }
 
 brls::View* RecyclingGrid::getNextCellFocus(brls::FocusDirection direction,
                                             brls::View* currentView) {

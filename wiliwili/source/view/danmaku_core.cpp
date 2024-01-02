@@ -342,7 +342,7 @@ void DanmakuCore::draw(NVGcontext *vg, float x, float y, float width,
 #ifdef BOREALIS_USE_OPENGL
     if (DANMAKU_SMART_MASK && maskData.isLoaded()) {
         // 先根据时间选择分片
-        while (maskSliceIndex < maskData.sliceData.size()) {
+        while (maskSliceIndex < maskData.sliceData.size() - 1) {
             auto &slice = maskData.sliceData[maskSliceIndex + 1];
             if (slice.time > playbackTime * 1000) break;
             maskSliceIndex++;
@@ -353,16 +353,15 @@ void DanmakuCore::draw(NVGcontext *vg, float x, float y, float width,
         if (maskSliceIndex >= maskData.sliceData.size()) goto skip_mask;
         auto &slice = maskData.getSlice(maskSliceIndex);
         if (!slice.isLoaded()) goto skip_mask;
-        while (maskIndex < slice.svgData.size()) {
-            auto &svg = slice.svgData[maskIndex];
+        while (maskIndex < slice.svgData.size() - 1) {
+            auto &svg = slice.svgData[maskIndex + 1];
             if (svg.showTime > playbackTime * 1000) break;
             maskIndex++;
         }
-        if (maskIndex == 0) maskIndex = 1;
 
         // 设置 svg
-        if (maskIndex > slice.svgData.size()) goto skip_mask;
-        auto &svg = slice.svgData[maskIndex - 1];
+        if (maskIndex >= slice.svgData.size()) goto skip_mask;
+        auto &svg = slice.svgData[maskIndex];
         // 给图片添加一圈边框（避免图片边沿为透明时自动扩展了透明色导致非视频区域无法显示弹幕）
         // 注：返回的 svg 底部固定留有 2像素 透明，不是很清楚具体作用，这里选择绘制一个2像素宽的空心矩形来覆盖
         const std::string border =
@@ -591,23 +590,26 @@ void WebMask::parseHeader2(const std::string &text) {
     // 获取所有分片信息
     std::vector<MaskSlice> sliceList;
 
-    sliceList.reserve(length + 1);
-    int64_t time, offset, currentOffset = 0;
+    sliceList.reserve(length);
+    uint64_t time, offset, currentOffset = 0;
     for (size_t i = 0; i < length; i++) {
-        std::memcpy(&time, text.data() + currentOffset, sizeof(int64_t));
-        std::memcpy(&offset, text.data() + currentOffset + 8, sizeof(int64_t));
+        std::memcpy(&time, text.data() + currentOffset, sizeof(uint64_t));
+        std::memcpy(&offset, text.data() + currentOffset + 8, sizeof(uint64_t));
         time   = ntohll(time);
         offset = ntohll(offset);
         sliceList.emplace_back(time, offset, 0);
         if (i != 0) sliceList[i - 1].offsetEnd = offset;
-        if (i == length - 1) sliceList[i].offsetEnd = text.size();
+        if (i == length - 1) sliceList[i].offsetEnd = -1;
         currentOffset += 16;
     }
-    // 再添加一个尾部分片方便计算
-    sliceList.emplace_back(-1, -1, -1);
 
     // 同步数据
-    brls::sync([this, sliceList]() { this->sliceData = sliceList; });
+    brls::sync([this, sliceList]() {
+        if (this->sliceData.empty())
+            this->sliceData = sliceList;
+        else
+            brls::Logger::error("sliceData is not empty");
+    });
 }
 
 void WebMask::clear() { this->sliceData.clear(); }
@@ -637,18 +639,21 @@ const MaskSlice &WebMask::getSlice(size_t index) {
     brls::Logger::debug("预取 web mask 数据片段: [{}, {})", index, requestEnd);
 
     // 请求数据
+    auto slices = this->sliceData;
     BILI::get_webmask(
         url, sliceData[index].offsetStart, sliceData[requestEnd - 1].offsetEnd,
-        [this, requestStart, requestEnd](const std::string &text) {
+        [this, slices, requestStart, requestEnd](const std::string &text) {
             brls::Logger::debug("获取片段结束: {}", text.size());
-            uint64_t offset = sliceData[requestStart].offsetStart;
+            uint64_t offset = slices[requestStart].offsetStart;
             std::vector<MaskSlice> sliceList;
             sliceList.reserve(requestEnd - requestStart);
             for (size_t i = requestStart; i < requestEnd; i++) {
-                MaskSlice slice = sliceData[i];
+                MaskSlice slice = slices[i];
                 // 解压分片数据
                 std::string data;
                 try {
+                    if (slice.offsetEnd == -1)
+                        slice.offsetEnd = text.size() + offset;
                     data = wiliwili::decompressGzipData(
                         text.substr(slice.offsetStart - offset,
                                     slice.offsetEnd - slice.offsetStart));
@@ -687,8 +692,12 @@ const MaskSlice &WebMask::getSlice(size_t index) {
 
             // 同步数据
             brls::sync([this, requestStart, sliceList]() {
-                std::copy(sliceList.begin(), sliceList.end(),
-                          sliceData.begin() + requestStart);
+                if (!sliceData.empty()) {
+                    std::copy(sliceList.begin(), sliceList.end(),
+                              sliceData.begin() + requestStart);
+                } else {
+                    brls::Logger::warning("sliceData is empty, skip mask data update");
+                }
                 requesting = false;
             });
         },
