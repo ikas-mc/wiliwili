@@ -519,6 +519,17 @@ inline void from_json(const nlohmann::json& nlohmann_json_j,
         NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM, order, length, size, url));
 }
 
+class SegmentBase {
+public:
+    std::string indexRange;
+    std::string Initialization;
+};
+inline void from_json(const nlohmann::json& nlohmann_json_j, SegmentBase& nlohmann_json_t) {
+
+    NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(
+        NLOHMANN_JSON_FROM, indexRange, Initialization));
+}
+
 class DashMedia {
 public:
     int id;  // The format ID of Bilibili, corresponds to one resolution.
@@ -528,6 +539,7 @@ public:
     unsigned int bandwidth;
     int width, height;  // only for video
     int codecid;
+    SegmentBase segment_base;
 };
 inline void from_json(const nlohmann::json& nlohmann_json_j,
                       DashMedia& nlohmann_json_t) {
@@ -535,6 +547,10 @@ inline void from_json(const nlohmann::json& nlohmann_json_j,
         !nlohmann_json_j.at("backup_url").is_null()) {
         nlohmann_json_j.at("backup_url").get_to(nlohmann_json_t.backup_url);
     }
+    if (nlohmann_json_j.contains("SegmentBase") &&!nlohmann_json_j.at("SegmentBase").is_null()) {
+         nlohmann_json_j.at("SegmentBase").get_to(nlohmann_json_t.segment_base);
+    }
+
     NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(
         NLOHMANN_JSON_FROM, id, base_url, bandwidth, height, width, codecid));
 }
