@@ -541,7 +541,8 @@ skip_mask:
                     break;
                 } else {
                     //滚动
-                    if (i.time < scrollLines[k].first ||
+					//TODO 
+                    if (k >=scrollLines.size() || i.time < scrollLines[k].first ||
                         i.time + width / i.speed < scrollLines[k].second)
                         continue;
                     i.line = k;
