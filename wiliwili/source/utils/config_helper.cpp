@@ -134,6 +134,7 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
     {SettingItem::DANMAKU_FILTER_TOP, {"danmaku_filter_top", {}, {}, 1}},
     {SettingItem::DANMAKU_FILTER_SCROLL, {"danmaku_filter_scroll", {}, {}, 1}},
     {SettingItem::DANMAKU_FILTER_COLOR, {"danmaku_filter_color", {}, {}, 1}},
+    {SettingItem::DANMAKU_FILTER_ADVANCED, {"danmaku_filter_advanced", {}, {}, 0}},
     {SettingItem::DANMAKU_SMART_MASK, {"danmaku_smart_mask", {}, {}, 1}},
     {SettingItem::SEARCH_TV_MODE, {"search_tv_mode", {}, {}, 1}},
     {SettingItem::HTTP_PROXY_STATUS, {"http_proxy_status", {}, {}, 0}},
@@ -231,6 +232,11 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
     {SettingItem::DLNA_PORT, {"dlna_port", {}, {}, 0}},
     {SettingItem::PLAYER_STRATEGY,
      {"player_strategy", {"rcmd", "next", "loop", "single"}, {0, 1, 2, 3}, 0}},
+    {SettingItem::PLAYER_BRIGHTNESS, {"player_brightness", {}, {}, 0}},
+    {SettingItem::PLAYER_CONTRAST, {"player_contrast", {}, {}, 0}},
+    {SettingItem::PLAYER_SATURATION, {"player_saturation", {}, {}, 0}},
+    {SettingItem::PLAYER_HUE, {"player_hue", {}, {}, 0}},
+    {SettingItem::PLAYER_GAMMA, {"player_gamma", {}, {}, 0}},
 };
 
 ProgramConfig::ProgramConfig() = default;
@@ -505,6 +511,15 @@ void ProgramConfig::load() {
     MPVCore::VIDEO_ASPECT =
         getSettingItem(SettingItem::PLAYER_ASPECT, std::string{"-1"});
 
+    // 初始化均衡器
+    MPVCore::VIDEO_BRIGHTNESS =
+        getSettingItem(SettingItem::PLAYER_BRIGHTNESS, 0);
+    MPVCore::VIDEO_CONTRAST = getSettingItem(SettingItem::PLAYER_CONTRAST, 0);
+    MPVCore::VIDEO_SATURATION =
+        getSettingItem(SettingItem::PLAYER_SATURATION, 0);
+    MPVCore::VIDEO_HUE   = getSettingItem(SettingItem::PLAYER_HUE, 0);
+    MPVCore::VIDEO_GAMMA = getSettingItem(SettingItem::PLAYER_GAMMA, 0);
+
     // 初始化弹幕相关内容
     DanmakuCore::DANMAKU_ON = getBoolOption(SettingItem::DANMAKU_ON);
     DanmakuCore::DANMAKU_SMART_MASK =
@@ -517,6 +532,8 @@ void ProgramConfig::load() {
         getBoolOption(SettingItem::DANMAKU_FILTER_SCROLL);
     DanmakuCore::DANMAKU_FILTER_SHOW_COLOR =
         getBoolOption(SettingItem::DANMAKU_FILTER_COLOR);
+    DanmakuCore::DANMAKU_FILTER_SHOW_ADVANCED =
+        getBoolOption(SettingItem::DANMAKU_FILTER_ADVANCED);
     DanmakuCore::DANMAKU_FILTER_LEVEL =
         getIntOption(SettingItem::DANMAKU_FILTER_LEVEL);
     DanmakuCore::DANMAKU_STYLE_AREA =
