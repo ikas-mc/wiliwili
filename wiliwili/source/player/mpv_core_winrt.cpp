@@ -480,6 +480,42 @@ void MPVCore::setAspect(const std::string& value) {
 	//TODO 
 }
 
+void MPVCore::setBrightness(int value) {
+	if (value < -100) value = -100;
+	if (value > 100) value = 100;
+}
+
+void MPVCore::setContrast(int value) {
+	if (value < -100) value = -100;
+	if (value > 100) value = 100;
+}
+
+void MPVCore::setSaturation(int value) {
+	if (value < -100) value = -100;
+	if (value > 100) value = 100;
+
+}
+
+void MPVCore::setGamma(int value) {
+	if (value < -100) value = -100;
+	if (value > 100) value = 100;
+}
+
+void MPVCore::setHue(int value) {
+	if (value < -100) value = -100;
+	if (value > 100) value = 100;
+}
+
+int MPVCore::getBrightness() const { return video_brightness; }
+
+int MPVCore::getContrast() const { return video_contrast; }
+
+int MPVCore::getSaturation() const { return video_saturation; }
+
+int MPVCore::getGamma() const { return video_gamma; }
+
+int MPVCore::getHue() const { return video_hue; }
+
 std::string MPVCore::getString(const std::string& key) {
 	return "";
 }
