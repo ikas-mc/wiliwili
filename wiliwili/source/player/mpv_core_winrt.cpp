@@ -22,6 +22,7 @@
 #include <winrt/Windows.Web.Http.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include "player/HttpRandomAccessStream.h"
+#include <nanovg_d3d11.h>
 
 static inline void check_error(int status) {
 	if (status < 0) {
@@ -77,6 +78,10 @@ MPVCore::MPVCore() {
 
 void MPVCore::init() {
 	setlocale(LC_NUMERIC, "C");
+
+	httpClient = winrt::Windows::Web::Http::HttpClient();
+	httpClient.DefaultRequestHeaders().UserAgent().Append(winrt::Windows::Web::Http::Headers::HttpProductInfoHeaderValue::Parse(L"bilibili"));
+	httpClient.DefaultRequestHeaders().Referer(winrt::Windows::Foundation::Uri(L"https://www.bilibili.com"));
 
 	brls::Logger::info("use winrt MediaPlayer");
 
@@ -171,11 +176,14 @@ void MPVCore::draw(brls::Rect area, float alpha) {
 
 	auto* vg = brls::Application::getNVGContext();
 
+	//NVGparams* params = nvgInternalParams(vg);
+	//D3DNVGcontext* params->userPtr;
+
 	if (mediaPlayer.PlaybackSession().PlaybackState() == winrt::Windows::Media::Playback::MediaPlaybackState::Playing) {
 		//copy frame
 		//TODO copy in OnVideoFrameAvailable, @ikas
 		concurrency::create_task([&] {
-			brls::Logger::debug("MPVCore copy image");
+			//brls::Logger::debug("MPVCore copy image");
 			//create frame
 			auto videoWidth = mediaPlayer.PlaybackSession().NaturalVideoWidth();
 			auto videoHeight = mediaPlayer.PlaybackSession().NaturalVideoHeight();
@@ -294,6 +302,72 @@ void MPVCore::OnVideoFrameAvailable(winrt::Windows::Media::Playback::MediaPlayer
 	//this->video_playing = true;
 }
 
+void MPVCore::setDashUrl(int start, int end,
+	std::string videoUrl, std::string videoIndexRange, std::string videoInitRange,
+	std::string audioUrl, std::string audioIndexRange, std::string audioInitRange
+) {
+	sourceType = 2;
+	concurrency::create_task([&] {
+		auto mpd = std::format(R"(﻿<MPD xmlns="urn:mpeg:DASH:schema:MPD:2011" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011" type="static">
+    <Period start="PT0S">
+        <AdaptationSet>
+            <ContentComponent contentType="video" id="1" />
+            <Representation bandwidth="1024" mimeType="video/mp4" id="1" startWithSap="1">
+                <SegmentBase indexRange="{}">
+                    <Initialization range="{}" />
+                </SegmentBase>
+            </Representation>
+        </AdaptationSet>
+        <AdaptationSet>
+            <ContentComponent contentType="audio" id="1" />
+            <Representation bandwidth="1024" mimeType="audio/mp4" id="1">
+                <SegmentBase indexRange="{}">
+                    <Initialization range="{}" />
+                </SegmentBase>
+            </Representation>
+        </AdaptationSet>
+    </Period>
+</MPD>)",  videoIndexRange, videoInitRange,  audioIndexRange, audioInitRange);
+
+		winrt::Windows::Storage::Streams::InMemoryRandomAccessStream stream;
+		winrt::Windows::Storage::Streams::DataWriter dataWriter{ stream };
+		dataWriter.UnicodeEncoding(winrt::Windows::Storage::Streams::UnicodeEncoding::Utf8);
+		dataWriter.WriteString(winrt::to_hstring(mpd));
+		dataWriter.StoreAsync().get();
+		dataWriter.DetachStream();
+		dataWriter.Close();
+		stream.Seek(0);
+
+		lastVideoUri = winrt::Windows::Foundation::Uri(winrt::to_hstring(videoUrl));
+		lastAudioUri = winrt::Windows::Foundation::Uri(winrt::to_hstring(audioUrl));
+
+		auto source = winrt::Windows::Media::Streaming::Adaptive::AdaptiveMediaSource::CreateFromStreamAsync(stream, lastVideoUri, winrt::to_hstring("application/dash+xml"), httpClient).get();
+
+		auto status = source.Status();
+		if (winrt::Windows::Media::Streaming::Adaptive::AdaptiveMediaSourceCreationStatus::Success == status) {
+			source.MediaSource().AdvancedSettings().AllSegmentsIndependent(true);
+			
+			source.MediaSource().DownloadRequested([this](
+				winrt::Windows::Media::Streaming::Adaptive::AdaptiveMediaSource, 
+				winrt::Windows::Media::Streaming::Adaptive::AdaptiveMediaSourceDownloadRequestedEventArgs const& args
+				){
+				if (args.ResourceContentType() == L"video/mp4")
+				{
+					args.Result().ResourceUri(lastVideoUri);
+				}
+				else if (args.ResourceContentType() == L"audio/mp4")
+				{
+					args.Result().ResourceUri(lastAudioUri);
+				}
+			});
+			
+			mediaPlayer.Source(winrt::Windows::Media::Core::MediaSource::CreateFromAdaptiveMediaSource(source.MediaSource()));
+		}
+
+		mediaPlayer.Play();
+		
+	}).wait();
+}
 
 void MPVCore::setUrl(const std::string& url, const std::string& extra,
 	const std::string& method) {
@@ -303,94 +377,32 @@ void MPVCore::setUrl(const std::string& url, const std::string& extra,
 		return;
 	}
 
-	std::string audioUrl{};
-	sourceType = 1;
-
 	//TODO need more video info 
 	winrt::Windows::Foundation::Uri videoUri{ winrt::to_hstring(url) };
 	if (videoUri.Extension() == L".m3u8") {
 		sourceType = 3;
 	}
-	else if (!extra.empty()) {
-		auto audioIndex = extra.find("audio-file=\"");
-		if (audioIndex != std::string::npos) {
-			auto audioLastIndex = extra.find("\"", audioIndex + 12);
-			audioUrl = extra.substr(audioIndex + 12, audioLastIndex - audioIndex - 12);
-			if (!audioUrl.empty()) {
-				sourceType = 2;
-			}
-		}
+	else {
+		sourceType = 1;
 	}
 
 	concurrency::create_task([&] {
-		if (sourceType == 2) {
-			//fot test dash onlu
-			//TODO impl, @ikas
-			auto videoHttpStream = winrt::make_self<HttpRandomAccessStream>(url);
-			auto loadResult = videoHttpStream->LoadAsync().get();
-			if (loadResult) {
-				auto videoHttpAccessStream = videoHttpStream.try_as<winrt::Windows::Storage::Streams::IRandomAccessStream>();
-				if (videoHttpAccessStream) {
-					mediaPlayer.SetStreamSource(videoHttpAccessStream);
-					videoSource = videoHttpStream;
-					mediaPlayer.Play();
-				}
-			}
-
-			/*
-			auto httpClient = winrt::Windows::Web::Http::HttpClient();
-			httpClient.DefaultRequestHeaders().Referer(winrt::Windows::Foundation::Uri(L"https://www.bilibili.com"));
-
-			auto mpd= R"()";
-			winrt::Windows::Storage::Streams::InMemoryRandomAccessStream stream;
-			winrt::Windows::Storage::Streams::DataWriter dataWriter{ stream };
-			dataWriter.UnicodeEncoding(winrt::Windows::Storage::Streams::UnicodeEncoding::Utf8);
-			dataWriter.WriteString(winrt::to_hstring(mpd));
-			dataWriter.StoreAsync().get();
-			dataWriter.DetachStream();
-			dataWriter.Close();
-			stream.Seek(0);
-			winrt::Windows::Foundation::Uri videoUri{ winrt::to_hstring("") };
-
-			auto source= winrt::Windows::Media::Streaming::Adaptive::AdaptiveMediaSource::CreateFromStreamAsync(stream, videoUri, winrt::to_hstring("application/dash+xml"), httpClient).get();
-
-			auto status = source.Status();
-			if (winrt::Windows::Media::Streaming::Adaptive::AdaptiveMediaSourceCreationStatus::Success == status) {
-			source.MediaSource().AdvancedSettings().AllSegmentsIndependent(true);
-			mediaPlayer.Source(winrt::Windows::Media::Core::MediaSource::CreateFromAdaptiveMediaSource(source.MediaSource()));
-			}
-
-			mediaPlayer.IsVideoFrameServerEnabled(true);
-			mediaPlayer.VideoFrameAvailable({this, &MPVCore::OnVideoFrameAvailable});
-			mediaPlayer.Play();
-			*/
-
-		}
-		else if (sourceType == 1) {
-			auto stream = winrt::make_self<HttpRandomAccessStream>(url);
-			stream->LoadAsync().get();
-			auto videoStream = stream.try_as<winrt::Windows::Storage::Streams::IRandomAccessStream>();
-			if (videoStream) {
-				mediaPlayer.SetStreamSource(videoStream);
-				videoSource = stream;
-				mediaPlayer.Play();
-			}
-		}
-		else if (sourceType == 3) {
-			auto httpClient = winrt::Windows::Web::Http::HttpClient();
-			httpClient.DefaultRequestHeaders().UserAgent().Append(winrt::Windows::Web::Http::Headers::HttpProductInfoHeaderValue::Parse(L"bilibili"));
-			httpClient.DefaultRequestHeaders().Referer(winrt::Windows::Foundation::Uri(L"https://www.bilibili.com"));
+		if (sourceType == 3) {
 			auto source = winrt::Windows::Media::Streaming::Adaptive::AdaptiveMediaSource::CreateFromUriAsync(videoUri, httpClient).get();
 			if (winrt::Windows::Media::Streaming::Adaptive::AdaptiveMediaSourceCreationStatus::Success == source.Status()) {
-				source.MediaSource().AdvancedSettings().AllSegmentsIndependent(true);
 				mediaPlayer.Source(winrt::Windows::Media::Core::MediaSource::CreateFromAdaptiveMediaSource(source.MediaSource()));
 				mediaPlayer.Play();
 			}
 		}
 		else {
-			//who are u?
+			auto stream = winrt::make_self<HttpRandomAccessStream>(httpClient, url);
+			if (stream->LoadAsync().get()) {
+				auto videoStream = stream.as<winrt::Windows::Storage::Streams::IRandomAccessStream>();
+			    mediaPlayer.SetStreamSource(videoStream);
+				videoSource = stream;
+				mediaPlayer.Play();
+			}
 		}
-
 		}).wait();
 }
 
@@ -426,6 +438,7 @@ void MPVCore::pause() {
 void MPVCore::stop() {
 	this->pause();
 	video_stopped = true;
+	mediaPlayer.Source(nullptr);
 }
 
 void MPVCore::seek(int64_t p) {
@@ -527,9 +540,12 @@ void MPVCore::PlaybackStateChanged(const winrt::Windows::Media::Playback::MediaP
 		video_playing = true;
 		video_paused = false;
 		video_stopped = false;
-		mpvCoreEvent.fire(MpvEventEnum::MPV_RESUME);
-		mpvCoreEvent.fire(MpvEventEnum::MPV_IDLE);
-		disableDimming(true);
+		brls::async([this] {
+			mpvCoreEvent.fire(MpvEventEnum::MPV_RESUME);
+			mpvCoreEvent.fire(MpvEventEnum::MPV_IDLE);
+			disableDimming(true);
+		});
+
 	}
 	else if (session.PlaybackState() == winrt::Windows::Media::Playback::MediaPlaybackState::Buffering) {
 		//video_playing = true;
@@ -545,9 +561,11 @@ void MPVCore::PlaybackStateChanged(const winrt::Windows::Media::Playback::MediaP
 		video_playing = false;
 		video_paused = true;
 		//video_stopped = false;
-		disableDimming(false);
-		mpvCoreEvent.fire(MpvEventEnum::MPV_PAUSE);
-		mpvCoreEvent.fire(MpvEventEnum::MPV_IDLE);
+		brls::async([this] {
+			disableDimming(false);
+			mpvCoreEvent.fire(MpvEventEnum::MPV_PAUSE);
+			mpvCoreEvent.fire(MpvEventEnum::MPV_IDLE);
+		});
 	}
 }
 
@@ -561,7 +579,7 @@ void MPVCore::PositionChanged(const winrt::Windows::Media::Playback::MediaPlayba
 		mpvCoreEvent.fire(MpvEventEnum::UPDATE_DURATION);
 	}
 
-	if (std::abs(this->video_progress - this->playback_time) > 1) {
+	if (std::abs(this->video_progress - this->playback_time) >=1) {
 		this->video_speed = session.PlaybackRate();
 		this->video_progress = (int64_t)this->playback_time;
 		mpvCoreEvent.fire(MpvEventEnum::UPDATE_PROGRESS);
@@ -576,23 +594,16 @@ void MPVCore::BufferingStarted(const winrt::Windows::Media::Playback::MediaPlayb
 	brls::Logger::info("========> MPV_EVENT_START_FILE");
 	// show osd for a really long time
 	//mpvCoreEvent.fire(MpvEventEnum::START_FILE);
-	mpvCoreEvent.fire(MpvEventEnum::LOADING_START);
+	brls::async([this] {
+		mpvCoreEvent.fire(MpvEventEnum::LOADING_START);
+	});
+
 }
 
 void MPVCore::BufferingEnded(const winrt::Windows::Media::Playback::MediaPlaybackSession& session,
 	const winrt::Windows::Foundation::IInspectable& value) {
 	brls::Logger::info("========> MPV_EVENT_PLAYBACK_RESTART");
-	video_stopped = false;
-
-	mpvCoreEvent.fire(MpvEventEnum::LOADING_END);
-	if (AUTO_PLAY) {
-		//mpvCoreEvent.fire(MpvEventEnum::MPV_RESUME);
-		//this->resume();
-	}
-	else {
-		//mpvCoreEvent.fire(MpvEventEnum::MPV_PAUSE);
-		//this->pause();
-	}
+	//mpvCoreEvent.fire(MpvEventEnum::LOADING_END);
 }
 
 void MPVCore::MediaEnded(winrt::Windows::Media::Playback::MediaPlayer, winrt::Windows::Foundation::IInspectable const& value) {

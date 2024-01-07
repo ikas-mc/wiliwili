@@ -11,7 +11,7 @@ class HttpRandomAccessStream : public winrt::implements<HttpRandomAccessStream,
     winrt::Windows::Storage::Streams::IInputStream, 
     winrt::no_weak_ref> {
 public:
-    HttpRandomAccessStream(const std::string& url);
+    HttpRandomAccessStream(const winrt::Windows::Web::Http::HttpClient& httpClient ,const std::string& url);
     ~HttpRandomAccessStream();
     uint64_t Size() const;
     void Size(uint64_t value);

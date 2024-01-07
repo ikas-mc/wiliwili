@@ -35,6 +35,17 @@ public:
     ~VideoView() override;
 
     /// Video control
+
+    //test for uwp,@ikas
+    //winrt mediaplayer原生支持dash播放,以下是满足播放要求的参数
+    //需要重新设计这部分,如果支持播放器
+#ifdef __PLAYER_WINRT__
+    void setDashUrl(int start, int end,
+        std::string videoUrl, std::string videoIndexRange, std::string videoInitRange,
+        std::string audioUrl, std::string audioIndexRange, std::string audioInitRange
+    );
+#endif // __PLAYER_WINRT__
+
     void setUrl(const std::string& url, int start = 0, int end = -1,
                 const std::string& audio = "");
 

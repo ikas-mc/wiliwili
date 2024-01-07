@@ -786,6 +786,16 @@ std::string VideoView::genExtraUrlParam(
     return extra;
 }
 
+#ifdef __PLAYER_WINRT__
+void VideoView::setDashUrl(int start, int end,
+    std::string videoUrl, std::string videoIndexRange, std::string videoInitRange,
+    std::string audioUrl, std::string audioIndexRange, std::string audioInitRange
+) {
+    mpvCore->setDashUrl(start, end, videoUrl, videoIndexRange, videoInitRange, audioUrl, audioIndexRange, audioInitRange);
+}
+#endif // __PLAYER_WINRT__
+
+
 void VideoView::setUrl(const std::string& url, int start, int end,
                        const std::string& audio) {
     std::vector<std::string> audios;

@@ -15,17 +15,13 @@ using namespace winrt::Windows::Web::Http;
 using namespace winrt::Windows::Web::Http::Headers;
 using namespace winrt::Windows::Web::Http::Filters;
 
-HttpRandomAccessStream::HttpRandomAccessStream(const std::string& url) : uri(Uri{ winrt::to_hstring(url) }) {
-	//TODO donot create here,ikas
-	m_httpClient = HttpClient();
-
-	m_httpClient.DefaultRequestHeaders().Append(L"Connection", L"Keep-Alive");
-	m_httpClient.DefaultRequestHeaders().UserAgent().Append(winrt::Windows::Web::Http::Headers::HttpProductInfoHeaderValue::Parse(L"bilibili"));
-	m_httpClient.DefaultRequestHeaders().Referer(winrt::Windows::Foundation::Uri(L"https://www.bilibili.com"));
+HttpRandomAccessStream::HttpRandomAccessStream(const winrt::Windows::Web::Http::HttpClient& httpClient, const std::string& url) : uri(Uri{ winrt::to_hstring(url) }) {
+	m_httpClient = httpClient;
 }
 
 HttpRandomAccessStream::~HttpRandomAccessStream() {
-	m_httpClient.Close();
+	m_size = 0;
+	inputStream.Close();
 }
 
 uint64_t HttpRandomAccessStream::Size() const {
@@ -78,7 +74,7 @@ IAsyncOperationWithProgress<IBuffer, uint32_t> HttpRandomAccessStream::ReadAsync
 		count = m_size - m_requestedPosition;
 	}
 
-	winrt::Windows::Storage::Streams::IBuffer data= co_await this->inputStream.ReadAsync(buffer, count, options);
+	winrt::Windows::Storage::Streams::IBuffer data = co_await this->inputStream.ReadAsync(buffer, count, options);
 	m_requestedPosition += data.Length();
 	co_return data;
 }
@@ -97,8 +93,10 @@ IAsyncOperation<bool> HttpRandomAccessStream::LoadAsync() {
 	m_size = 0;
 
 	HttpRequestMessage request(HttpMethod::Head(), uri);
-	HttpResponseMessage response = co_await m_httpClient.SendRequestAsync(request, HttpCompletionOption::ResponseHeadersRead);
-	switch (response.StatusCode()) {
+	HttpRequestResult result = co_await m_httpClient.TrySendRequestAsync(request, HttpCompletionOption::ResponseHeadersRead);
+	if (result.Succeeded()) {
+		HttpResponseMessage response = result.ResponseMessage();
+		switch (response.StatusCode()) {
 		case HttpStatusCode::Ok:
 		{
 			if (response.Content().Headers().HasKey(L"Content-Length")) {
@@ -121,14 +119,18 @@ IAsyncOperation<bool> HttpRandomAccessStream::LoadAsync() {
 		default: {
 			//throw;
 		}
+		}
+
 	}
 
 	if (m_size < 1) {
 		HttpRequestMessage request2(HttpMethod::Get(), uri);
 		request2.Headers().Append(L"Range", L"bytes=0-0");
-		HttpResponseMessage response2 = co_await m_httpClient.SendRequestAsync(request2, HttpCompletionOption::ResponseHeadersRead);
-		switch (response2.StatusCode()) {
-		    case HttpStatusCode::PartialContent:
+		result = co_await m_httpClient.TrySendRequestAsync(request2, HttpCompletionOption::ResponseHeadersRead);
+		if (result.Succeeded()) {
+			HttpResponseMessage response2 = result.ResponseMessage();
+			switch (response2.StatusCode()) {
+			case HttpStatusCode::PartialContent:
 			case HttpStatusCode::Ok:
 			{
 				if (response2.Content().Headers().HasKey(L"Content-Range"))
@@ -142,29 +144,31 @@ IAsyncOperation<bool> HttpRandomAccessStream::LoadAsync() {
 			default: {
 				//throw;
 			}
+			}
 		}
 	}
-	
+
 	co_return m_size > 0;
 }
 
 IAsyncAction HttpRandomAccessStream::SendHttpRequestAsync(_In_ uint64_t startPosition, _In_ uint32_t requestedSizeInBytes) {
-		HttpRequestMessage request(HttpMethod::Get(), uri);
-		request.Headers().Append(L"Range", std::format(L"bytes={}-", startPosition));
-
-		HttpResponseMessage  response = co_await m_httpClient.SendRequestAsync(request, HttpCompletionOption::ResponseHeadersRead);
+	HttpRequestMessage request(HttpMethod::Get(), uri);
+	request.Headers().Append(L"Range", std::format(L"bytes={}-", startPosition));
+	HttpRequestResult result = co_await m_httpClient.TrySendRequestAsync(request, HttpCompletionOption::ResponseHeadersRead);
+	if (result.Succeeded()) {
+		HttpResponseMessage response = result.ResponseMessage();
 		HttpContentHeaderCollection contentHeaders = response.Content().Headers();
-
 		switch (response.StatusCode()) {
-			case HttpStatusCode::Ok:
-			case HttpStatusCode::PartialContent: 
-			{
-				inputStream = co_await response.Content().ReadAsInputStreamAsync();
-				break;
-			}
-			default: {
-				//throw;
-			}
+		case HttpStatusCode::Ok:
+		case HttpStatusCode::PartialContent:
+		{
+			inputStream = co_await response.Content().ReadAsInputStreamAsync();
+			break;
 		}
+		default: {
+			//throw;
+		}
+		}
+	}
 }
 #endif /*__PLAYER_WINRT__*/

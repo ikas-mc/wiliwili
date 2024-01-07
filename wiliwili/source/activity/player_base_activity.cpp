@@ -635,6 +635,23 @@ void BasePlayerActivity::onVideoPlayUrl(
             }
         }
 
+#ifdef __PLAYER_WINRT__
+        //仅测试 音视频均存在的情况
+        if (!result.dash.audio.empty()) {
+            // 匹配当前设定的音频码率
+            bilibili::DashMedia a = result.dash.audio[0];  // High
+            for (auto& i : result.dash.audio) {
+                if (BILI::AUDIO_QUALITY == i.id) {
+                    a = i;
+                    break;
+                }
+            }
+            this->video->setDashUrl(start, end,
+                v.base_url, v.segment_base.indexRange, v.segment_base.Initialization,
+                a.base_url, a.segment_base.indexRange, a.segment_base.Initialization
+            );
+        }
+#else
         // 将主音频和备份音频链接合并，当作不同的音轨传给播放器，可以实现在播放失败时自动切换
         std::vector<std::string> audios;
         if (!result.dash.audio.empty()) {
@@ -649,9 +666,9 @@ void BasePlayerActivity::onVideoPlayUrl(
             // 生成音频列表
             audios.emplace_back(a.base_url);
             audios.insert(audios.end(), a.backup_url.begin(),
-                          a.backup_url.end());
+                a.backup_url.end());
             brls::Logger::debug("Dash quality: {}; video: {}; audio: {}",
-                                videoUrlResult.quality, v.codecid, a.id);
+                videoUrlResult.quality, v.codecid, a.id);
         }
 
         // 给播放器设置链接
@@ -661,6 +678,8 @@ void BasePlayerActivity::onVideoPlayUrl(
         for (const auto& backup_url : v.backup_url) {
             this->video->setBackupUrl(backup_url, start, end, audios);
         }
+#endif
+
     } else {
         // flv
         brls::Logger::debug("Video type: flv");

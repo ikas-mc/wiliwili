@@ -133,6 +133,16 @@ public:
 
     /// Set MPV States
 
+    //test for uwp,@ikas
+    //winrt mediaplayer原生支持dash播放,以下是满足播放要求的参数
+    //需要重新设计这部分,如果支持播放器
+#ifdef __PLAYER_WINRT__
+    void setDashUrl(int start, int end,
+        std::string videoUrl, std::string videoIndexRange, std::string videoInitRange,
+        std::string audioUrl, std::string audioIndexRange, std::string audioInitRange
+    );
+#endif __PLAYER_WINRT__
+
     /**
      * 设置播放链接
      * @param url  播放链接
@@ -419,6 +429,7 @@ private:
     static void on_wakeup(void *self);
 
 #ifdef __PLAYER_WINRT__
+    winrt::Windows::Web::Http::HttpClient httpClient { nullptr };
 
     winrt::Windows::Media::Playback::MediaPlayer mediaPlayer { nullptr };
     int sourceType;//1 mp4,2 dash,3 m3u8
@@ -443,5 +454,8 @@ private:
     int nvg_image   = 0;
 
     winrt::com_ptr<HttpRandomAccessStream> videoSource {nullptr };
+
+    winrt::Windows::Foundation::Uri lastVideoUri{ nullptr };
+    winrt::Windows::Foundation::Uri lastAudioUri{ nullptr };
 #endif
 };
