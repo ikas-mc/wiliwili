@@ -4,8 +4,14 @@
 
 #pragma once
 
-#include <borealis.hpp>
+#include <unordered_map>
+#include <vector>
+#include <string>
+#include <cstdlib>
+#include <fmt/format.h>
+#include <borealis/core/geometry.hpp>
 #include <borealis/core/singleton.hpp>
+#include <borealis/core/logger.hpp>
 #ifndef __PLAYER_WINRT__
 #include <mpv/client.h>
 #include <mpv/render.h>
@@ -74,31 +80,77 @@ struct GLShader {
 #endif
 #endif
 
-typedef enum MpvEventEnum {
-    MPV_LOADED,
-    MPV_PAUSE,
-    MPV_RESUME,
-    MPV_IDLE,
-    MPV_STOP,
-    MPV_FILE_ERROR,
-    LOADING_START,
-    LOADING_END,
-    UPDATE_DURATION,
-    UPDATE_PROGRESS,
-    START_FILE,
-    END_OF_FILE,
-    CACHE_SPEED_CHANGE,
-    VIDEO_SPEED_CHANGE,
-    VIDEO_VOLUME_CHANGE,
-    VIDEO_MUTE,
-    VIDEO_UNMUTE,
-    RESET,
-} MpvEventEnum;
+#include "utils/event_helper.hpp"
 
-typedef brls::Event<MpvEventEnum> MPVEvent;
-typedef brls::Event<std::string, void *> MPVCustomEvent;
-#define MPV_E MPVCore::instance().getEvent()
-#define MPV_CE MPVCore::instance().getCustomEvent()
+#ifdef MPV_BUNDLE_DLL
+#include <MemoryModule.h>
+typedef int (*mpvSetOptionStringFunc)(mpv_handle *ctx, const char *name, const char *data);
+typedef int (*mpvObservePropertyFunc)(mpv_handle *mpv, uint64_t reply_userdata, const char *name, mpv_format format);
+typedef mpv_handle *(*mpvCreateFunc)(void);
+typedef int (*mpvInitializeFunc)(mpv_handle *ctx);
+typedef void (*mpvTerminateDestroyFunc)(mpv_handle *ctx);
+typedef void (*mpvSetWakeupCallbackFunc)(mpv_handle *ctx, void (*cb)(void *d), void *d);
+typedef int (*mpvCommandStringFunc)(mpv_handle *ctx, const char *args);
+typedef const char *(*mpvErrorStringFunc)(int error);
+typedef mpv_event *(*mpvWaitEventFunc)(mpv_handle *ctx, double timeout);
+typedef int (*mpvGetPropertyFunc)(mpv_handle *ctx, const char *name, mpv_format format, void *data);
+typedef int (*mpvCommandAsyncFunc)(mpv_handle *ctx, uint64_t reply_userdata, const char **args);
+typedef char *(*mpvGetPropertyStringFunc)(mpv_handle *ctx, const char *name);
+typedef void (*mpvFreeNodeContentsFunc)(mpv_node *node);
+typedef int (*mpvSetOptionFunc)(mpv_handle *ctx, const char *name, mpv_format format, void *data);
+typedef void (*mpvFreeFunc)(void *data);
+typedef int (*mpvRenderContextCreateFunc)(mpv_render_context **res, mpv_handle *mpv, mpv_render_param *params);
+typedef void (*mpvRenderContextSetUpdateCallbackFunc)(mpv_render_context *ctx, mpv_render_update_fn callback,
+                                                      void *callback_ctx);
+typedef int (*mpvRenderContextRenderFunc)(mpv_render_context *ctx, mpv_render_param *params);
+typedef void (*mpvRenderContextReportSwapFunc)(mpv_render_context *ctx);
+typedef uint64_t (*mpvRenderContextUpdateFunc)(mpv_render_context *ctx);
+typedef void (*mpvRenderContextFreeFunc)(mpv_render_context *ctx);
+
+extern mpvSetOptionStringFunc mpvSetOptionString;
+extern mpvObservePropertyFunc mpvObserveProperty;
+extern mpvCreateFunc mpvCreate;
+extern mpvInitializeFunc mpvInitialize;
+extern mpvTerminateDestroyFunc mpvTerminateDestroy;
+extern mpvSetWakeupCallbackFunc mpvSetWakeupCallback;
+extern mpvCommandStringFunc mpvCommandString;
+extern mpvErrorStringFunc mpvErrorString;
+extern mpvWaitEventFunc mpvWaitEvent;
+extern mpvGetPropertyFunc mpvGetProperty;
+extern mpvCommandAsyncFunc mpvCommandAsync;
+extern mpvGetPropertyStringFunc mpvGetPropertyString;
+extern mpvFreeNodeContentsFunc mpvFreeNodeContents;
+extern mpvSetOptionFunc mpvSetOption;
+extern mpvFreeFunc mpvFree;
+extern mpvRenderContextCreateFunc mpvRenderContextCreate;
+extern mpvRenderContextSetUpdateCallbackFunc mpvRenderContextSetUpdateCallback;
+extern mpvRenderContextRenderFunc mpvRenderContextRender;
+extern mpvRenderContextReportSwapFunc mpvRenderContextReportSwap;
+extern mpvRenderContextUpdateFunc mpvRenderContextUpdate;
+extern mpvRenderContextFreeFunc mpvRenderContextFree;
+#else
+#define mpvSetOptionString mpv_set_option_string
+#define mpvObserveProperty mpv_observe_property
+#define mpvCreate mpv_create
+#define mpvInitialize mpv_initialize
+#define mpvTerminateDestroy mpv_terminate_destroy
+#define mpvSetWakeupCallback mpv_set_wakeup_callback
+#define mpvCommandString mpv_command_string
+#define mpvErrorString mpv_error_string
+#define mpvWaitEvent mpv_wait_event
+#define mpvGetProperty mpv_get_property
+#define mpvCommandAsync mpv_command_async
+#define mpvGetPropertyString mpv_get_property_string
+#define mpvFreeNodeContents mpv_free_node_contents
+#define mpvSetOption mpv_set_option
+#define mpvFree mpv_free
+#define mpvRenderContextCreate mpv_render_context_create
+#define mpvRenderContextSetUpdateCallback mpv_render_context_set_update_callback
+#define mpvRenderContextRender mpv_render_context_render
+#define mpvRenderContextReportSwap mpv_render_context_report_swap
+#define mpvRenderContextUpdate mpv_render_context_update
+#define mpvRenderContextFree mpv_render_context_free
+#endif
 
 class MPVCore : public brls::Singleton<MPVCore> {
 public:
@@ -128,8 +180,7 @@ public:
     std::string getString(const std::string &key);
     double getDouble(const std::string &key);
     int64_t getInt(const std::string &key);
-    std::unordered_map<std::string, mpv_node> getNodeMap(
-        const std::string &key);
+    std::unordered_map<std::string, mpv_node> getNodeMap(const std::string &key);
 
     /// Set MPV States
 
@@ -137,10 +188,7 @@ public:
     //winrt mediaplayer原生支持dash播放,以下是满足播放要求的参数
     //需要重新设计这部分,如果支持播放器
 #ifdef __PLAYER_WINRT__
-    void setDashUrl(int start, int end,
-        std::string videoUrl, std::string videoIndexRange, std::string videoInitRange,
-        std::string audioUrl, std::string audioIndexRange, std::string audioInitRange
-    );
+    void setDashUrl(int start, int end, std::string videoUrl, std::string videoIndexRange, std::string videoInitRange,std::string audioUrl, std::string audioIndexRange, std::string audioInitRange);
 #endif __PLAYER_WINRT__
 
     /**
@@ -149,8 +197,7 @@ public:
      * @param extra 额外的参数，如 referrer、audio 等，详情见 mpv 文档
      * @param method 行为，默认为替换当前视频，详情见 mpv 文档
      */
-    void setUrl(const std::string &url, const std::string &extra = "",
-                const std::string &method = "replace");
+    void setUrl(const std::string &url, const std::string &extra = "", const std::string &method = "replace");
 
     /**
      * 设置备用链接（可多次调用）
@@ -267,20 +314,13 @@ public:
     MPVEvent *getEvent();
 
     /**
-     * 可以用于共享自定义事件
-     * 传递内容为: string类型的事件名与一个任意类型的指针
-     */
-    MPVCustomEvent *getCustomEvent();
-
-    /**
      * 重启 MPV，用于某些需要重启才能设置的选项
      */
     void restart();
 
     void reset();
 
-    void setShader(const std::string &profile, const std::string &shaders,
-                   bool showHint = true);
+    void setShader(const std::string &profile, const std::string &shaders, bool showHint = true);
 
     void clearShader(bool showHint = true);
 #ifndef __PLAYER_WINRT__
@@ -291,8 +331,7 @@ public:
             brls::Logger::error("mpv is not initialized");
             return;
         }
-        std::vector<std::string> commands = {
-            fmt::format("{}", std::forward<Args>(args))...};
+        std::vector<std::string> commands = {fmt::format("{}", std::forward<Args>(args))...};
 
         std::vector<const char *> res;
         res.reserve(commands.size() + 1);
@@ -301,7 +340,7 @@ public:
         }
         res.emplace_back(nullptr);
 
-        mpv_command_async(mpv, 0, res.data());
+        mpvCommandAsync(mpv, 0, res.data());
     }
 
 #else
@@ -310,7 +349,7 @@ public:
     void command_async(Args &&...args) {
         std::vector<std::string> commands = {
             fmt::format("{}", std::forward<Args>(args))...};
-    }    
+    }
 #endif
     // core states
     int64_t duration       = 0;  // second
@@ -389,10 +428,8 @@ private:
     void *pixels                   = nullptr;
     bool redraw                    = false;
     mpv_render_param mpv_params[5] = {
-        {MPV_RENDER_PARAM_SW_SIZE, &sw_size[0]},
-        {MPV_RENDER_PARAM_SW_FORMAT, (void *)sw_format},
-        {MPV_RENDER_PARAM_SW_STRIDE, &pitch},
-        {MPV_RENDER_PARAM_SW_POINTER, pixels},
+        {MPV_RENDER_PARAM_SW_SIZE, &sw_size[0]}, {MPV_RENDER_PARAM_SW_FORMAT, (void *)sw_format},
+        {MPV_RENDER_PARAM_SW_STRIDE, &pitch},    {MPV_RENDER_PARAM_SW_POINTER, pixels},
         {MPV_RENDER_PARAM_INVALID, nullptr},
     };
 #elif defined(BOREALIS_USE_DEKO3D)
@@ -427,16 +464,16 @@ private:
         {MPV_RENDER_PARAM_FLIP_Y, &flip_y},
         {MPV_RENDER_PARAM_INVALID, nullptr},
     };
-    float vertices[20] = {1.0f, 1.0f,  0.0f, 1.0f,  1.0f,  1.0f, -1.0f,
-                          0.0f, 1.0f,  0.0f, -1.0f, -1.0f, 0.0f, 0.0f,
-                          0.0f, -1.0f, 1.0f, 0.0f,  0.0f,  1.0f};
+    float vertices[20] = {1.0f,  1.0f,  0.0f, 1.0f, 1.0f, 1.0f,  -1.0f, 0.0f, 1.0f, 0.0f,
+                          -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f,  0.0f, 0.0f, 1.0f};
+#endif
+
+#ifdef MPV_BUNDLE_DLL
+    HMEMORYMODULE dll;
 #endif
 #endif
     // MPV 内部事件，传递内容为: 事件类型
     MPVEvent mpvCoreEvent;
-
-    // 自定义的事件，传递内容为: string类型的事件名与一个任意类型的指针
-    MPVCustomEvent mpvCoreCustomEvent;
 
     // 当前软件是否在前台的回调
     brls::Event<bool>::Subscription focusSubscription;
@@ -471,7 +508,7 @@ private:
     int sourceType;//1 mp4,2 dash,3 m3u8
 
     void PlayerVolumeChanged(const winrt::Windows::Media::Playback::MediaPlayer& player, const winrt::Windows::Foundation::IInspectable& value);
-    
+
     void PlaybackStateChanged(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
 
     void PositionChanged(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);

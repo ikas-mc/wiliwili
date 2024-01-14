@@ -309,15 +309,10 @@ sudo dkp-pacman -S switch-glfw switch-libwebp switch-cmake switch-curl devkitA64
 base_url="https://github.com/xfangfang/wiliwili/releases/download/v0.1.0"
 sudo dkp-pacman -U \
     $base_url/switch-libass-0.17.1-1-any.pkg.tar.zst \
-    $base_url/switch-ffmpeg-6.1-4-any.pkg.tar.zst \
-    $base_url/switch-libmpv-0.36.0-1-any.pkg.tar.zst
+    $base_url/switch-ffmpeg-6.1-5-any.pkg.tar.zst \
+    $base_url/switch-libmpv-0.36.0-2-any.pkg.tar.zst
 
-# 4. 可选：安装依赖库 nspmini：https://github.com/StarDustCFW/nspmini
-# (1). 在resources 目录下放置：nsp_forwarder.nsp (如何生成nsp见: scripts/switch-forwarder)
-# (2). cmake 构建参数添加 -DBUILTIN_NSP=ON
-# 按上述配置后，从相册打开wiliwili时会增加一个安装NSP Forwarder的按钮
-
-# 5. build
+# 4. build
 cmake -B cmake-build-switch -DPLATFORM_SWITCH=ON
 make -C cmake-build-switch wiliwili.nro -j$(nproc)
 ```
@@ -327,7 +322,7 @@ make -C cmake-build-switch wiliwili.nro -j$(nproc)
 ### 交叉编译 PSV 可执行文件
 
 参考 `.github/workflows/build.yaml` 使用 docker 来编译。  
-本地安装 [vitasdk](https://vitasdk.org/) 环境编译时，请不要忘记将需要的四个 suprx 文件放入 `scripts/psv/module` 目录下。 详情请参考：[borealis 示例](https://github.com/xfangfang/borealis#building-the-demo-for-psv) 和 [wiliwili_vita 编译指南](https://gist.github.com/xfangfang/305da139721ad4e96d7a9d9a1a550a9d)
+编译时，请不要忘记将需要的四个 suprx 文件放入 `scripts/psv/module` 目录下。 详情请参考：[borealis 示例](https://github.com/xfangfang/borealis#building-the-demo-for-psv) 和 [wiliwili_vita 编译指南](https://gist.github.com/xfangfang/305da139721ad4e96d7a9d9a1a550a9d)
 
 <details>
 
@@ -399,6 +394,7 @@ The development of wiliwili cannot do without the support of the following open 
   - https://github.com/sammycage/lunasvg
   - https://github.com/cesanta/mongoose
   - https://chromium.googlesource.com/webm/libwebp
+  - https://github.com/fancycode/MemoryModule
 
 # Special thanks
 
