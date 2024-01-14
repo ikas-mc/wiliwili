@@ -22,19 +22,70 @@
 #include <SDL2/SDL_main.h>
 #endif
 
+#ifdef __WINRT__
+#include <windows.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.UI.Core.h>
+#include <winrt/Windows.ApplicationModel.Core.h>
+#include <winrt/Windows.Storage.Streams.h>
+#endif
+
 int main(int argc, char* argv[]) {
+#ifdef __WINRT__
+    setlocale(LC_ALL, ".utf8");
+
+    //TODO use config @ikas
+    brls::Logger::setLogLevel(brls::LogLevel::LOG_DEBUG);
+    brls::Application::enableDebuggingView(false);
+
+    auto appLocal = winrt::Windows::Storage::AppDataPaths::GetDefault().LocalAppData();
+    auto const time = std::chrono::current_zone()->to_local(std::chrono::system_clock::now());
+    auto logFile = std::format("{}\\wiliwili.{:%Y-%m-%d-%H-%M-%S}.log", winrt::to_string(appLocal), time);
+    brls::Logger::setLogOutput(std::fopen(logFile.c_str(), "w+"));
+
+    if (IsDebuggerPresent()) {
+        brls::Logger::getLogEvent()->subscribe([](brls::Logger::TimePoint now, brls::LogLevel level, const std::string& log)
+            {
+                auto message = std::format(L"[{}] {}\n", (int)level, winrt::to_hstring(log));
+                OutputDebugString(message.c_str());
+            });
+    }
+
+    auto cmdline = winrt::to_string(GetCommandLine());
+    brls::Logger::debug("app start,cmdline:{}", cmdline);
+
+    //for xbox 
+    winrt::Windows::UI::Core::SystemNavigationManager::GetForCurrentView().BackRequested([](
+        winrt::Windows::Foundation::IInspectable const,
+        winrt::Windows::UI::Core::BackRequestedEventArgs const& args
+        ) {
+            args.Handled(true);
+        });
+
+    auto window = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread();
+    auto shiftKeyState= window.GetKeyState(winrt::Windows::System::VirtualKey::Shift);
+    if (((int)shiftKeyState & 1) == 1) {
+        brls::Application::enableDebuggingView(true);
+    }
+
+#else
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "-d") == 0) {
             brls::Logger::setLogLevel(brls::LogLevel::LOG_DEBUG);
-        } else if (std::strcmp(argv[i], "-v") == 0) {
+        }
+        else if (std::strcmp(argv[i], "-v") == 0) {
             brls::Application::enableDebuggingView(true);
-        } else if (std::strcmp(argv[i], "-t") == 0) {
+        }
+        else if (std::strcmp(argv[i], "-t") == 0) {
             MPVCore::TERMINAL = true;
-        } else if (std::strcmp(argv[i], "-o") == 0) {
+        }
+        else if (std::strcmp(argv[i], "-o") == 0) {
             const char* path = (i + 1 < argc) ? argv[++i] : "wiliwili.log";
             brls::Logger::setLogOutput(std::fopen(path, "w+"));
         }
     }
+#endif
 
     // Load cookies and settings
     ProgramConfig::instance().init();
