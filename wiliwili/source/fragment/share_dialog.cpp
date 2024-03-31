@@ -6,7 +6,8 @@
 #include <borealis/views/dialog.hpp>
 #include <cpr/cpr.h>
 
-#if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
+#if defined(__WINRT__)
+#elif defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
 #include <clip/clip.h>
 #endif
 
@@ -21,11 +22,16 @@ ShareBox::ShareBox() {
                                        [this](const std::string& value) { this->image->setImageFromSVGFile(value); });
     this->registerStringXMLAttribute("action", [this](const std::string& value) { this->setAction(value); });
 
+
 #if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
     this->registerClickAction([this](...) {
         if (this->action == "clipboard") {
+#if defined(__WINRT__)
+            //TODO use winrt Clipboard
+#else
             clip::set_text(this->link);
             this->eventClipboard.fire();
+#endif
         } else {
             brls::Application::getPlatform()->openBrowser(this->link);
             brls::Application::popActivity();
