@@ -10,10 +10,10 @@
 
 #include "utils/config_helper.hpp"
 #include "utils/number_helper.hpp"
+#include "utils/crash_helper.hpp"
 #include "view/mpv_core.hpp"
 
 #ifdef MPV_BUNDLE_DLL
-#include <romfs/romfs.hpp>
 mpvSetOptionStringFunc mpvSetOptionString;
 mpvObservePropertyFunc mpvObserveProperty;
 mpvCreateFunc mpvCreate;
@@ -147,6 +147,9 @@ static GLuint linkProgram(GLuint s1, GLuint s2) {
 
 #ifdef BOREALIS_USE_DEKO3D
 #include <borealis/platforms/switch/switch_video.hpp>
+#elif defined(BOREALIS_USE_D3D11)
+#include <borealis/platforms/driver/d3d11.hpp>
+extern std::unique_ptr<brls::D3D11Context> D3D11_CONTEXT;
 #endif
 
 static inline void check_error(int status) {
@@ -155,7 +158,7 @@ static inline void check_error(int status) {
     }
 }
 
-#if !defined(MPV_SW_RENDER) && !defined(BOREALIS_USE_DEKO3D)
+#if defined(BOREALIS_USE_OPENGL) && !defined(MPV_SW_RENDER)
 static void *get_proc_address(void *unused, const char *name) {
 #ifdef __SDL2__
     SDL_GL_GetCurrentContext();
@@ -188,7 +191,7 @@ static inline float aspectConverter(const std::string &value) {
 void MPVCore::on_update(void *self) {
     brls::sync([]() {
         uint64_t flags = mpvRenderContextUpdate(MPVCore::instance().getContext());
-#if defined(MPV_NO_FB) || defined(BOREALIS_USE_DEKO3D) || defined(USE_GL2)
+#if !defined(MPV_SW_RENDER) && !defined(MPV_USE_FB)
         (void)flags;
 #else
         MPVCore::instance().redraw = flags & MPV_RENDER_UPDATE_FRAME;
@@ -212,35 +215,53 @@ void MPVCore::on_wakeup(void *self) {
     brls::sync([]() { MPVCore::instance().eventMainLoop(); });
 }
 
+#if defined(MPV_BUNDLE_DLL)
+template <typename Module, typename fnGetProcAddress>
+void initMpvProc(Module dll, fnGetProcAddress pGetProcAddress)
+{
+    mpvSetOptionString     = (mpvSetOptionStringFunc)pGetProcAddress(dll, "mpv_set_option_string");
+    mpvObserveProperty     = (mpvObservePropertyFunc)pGetProcAddress(dll, "mpv_observe_property");
+    mpvCreate              = (mpvCreateFunc)pGetProcAddress(dll, "mpv_create");
+    mpvInitialize          = (mpvInitializeFunc)pGetProcAddress(dll, "mpv_initialize");
+    mpvTerminateDestroy    = (mpvTerminateDestroyFunc)pGetProcAddress(dll, "mpv_terminate_destroy");
+    mpvSetWakeupCallback   = (mpvSetWakeupCallbackFunc)pGetProcAddress(dll, "mpv_set_wakeup_callback");
+    mpvCommandString       = (mpvCommandStringFunc)pGetProcAddress(dll, "mpv_command_string");
+    mpvErrorString         = (mpvErrorStringFunc)pGetProcAddress(dll, "mpv_error_string");
+    mpvWaitEvent           = (mpvWaitEventFunc)pGetProcAddress(dll, "mpv_wait_event");
+    mpvGetProperty         = (mpvGetPropertyFunc)pGetProcAddress(dll, "mpv_get_property");
+    mpvCommandAsync        = (mpvCommandAsyncFunc)pGetProcAddress(dll, "mpv_command_async");
+    mpvGetPropertyString   = (mpvGetPropertyStringFunc)pGetProcAddress(dll, "mpv_get_property_string");
+    mpvFreeNodeContents    = (mpvFreeNodeContentsFunc)pGetProcAddress(dll, "mpv_free_node_contents");
+    mpvSetOption           = (mpvSetOptionFunc)pGetProcAddress(dll, "mpv_set_option");
+    mpvFree                = (mpvFreeFunc)pGetProcAddress(dll, "mpv_free");
+    mpvRenderContextCreate = (mpvRenderContextCreateFunc)pGetProcAddress(dll, "mpv_render_context_create");
+    mpvRenderContextUpdate = (mpvRenderContextUpdateFunc)pGetProcAddress(dll, "mpv_render_context_update");
+    mpvRenderContextFree   = (mpvRenderContextFreeFunc)pGetProcAddress(dll, "mpv_render_context_free");
+    mpvRenderContextRender = (mpvRenderContextRenderFunc)pGetProcAddress(dll, "mpv_render_context_render");
+    mpvRenderContextSetUpdateCallback = (mpvRenderContextSetUpdateCallbackFunc)pGetProcAddress(dll, "mpv_render_context_set_update_callback");
+    mpvRenderContextReportSwap = (mpvRenderContextReportSwapFunc)pGetProcAddress(dll, "mpv_render_context_report_swap");
+}
+#endif
+
 MPVCore::MPVCore() {
 #if defined(MPV_BUNDLE_DLL)
-    auto &dllData = romfs::get("libmpv-2.dll");
-    dll           = MemoryLoadLibrary(dllData.data(), dllData.size());
-    brls::Logger::info("Load libmpv-2.dll, size: {}", dllData.size());
+    HMODULE hMpv = ::LoadLibraryW(L"libmpv-2.dll");
+    if (!hMpv) {
+        HRSRC hSrc = ::FindResource(nullptr, "MPV", RT_RCDATA);
+        HGLOBAL hRes = ::LoadResource(nullptr, hSrc);
+        DWORD dwSize = ::SizeofResource(nullptr, hSrc);
+        dll = MemoryLoadLibrary(::LockResource(hRes), dwSize);
+        ::FreeResource(hRes);
+        
+        brls::Logger::info("Load bundled libmpv-2.dll, size: {}", dwSize);
+        initMpvProc(dll, MemoryGetProcAddress);
+    } else {
+        char dllPath[MAX_PATH];
+        ::GetModuleFileNameA(hMpv, dllPath, sizeof(dllPath));
 
-    mpvSetOptionString     = (mpvSetOptionStringFunc)MemoryGetProcAddress(dll, "mpv_set_option_string");
-    mpvObserveProperty     = (mpvObservePropertyFunc)MemoryGetProcAddress(dll, "mpv_observe_property");
-    mpvCreate              = (mpvCreateFunc)MemoryGetProcAddress(dll, "mpv_create");
-    mpvInitialize          = (mpvInitializeFunc)MemoryGetProcAddress(dll, "mpv_initialize");
-    mpvTerminateDestroy    = (mpvTerminateDestroyFunc)MemoryGetProcAddress(dll, "mpv_terminate_destroy");
-    mpvSetWakeupCallback   = (mpvSetWakeupCallbackFunc)MemoryGetProcAddress(dll, "mpv_set_wakeup_callback");
-    mpvCommandString       = (mpvCommandStringFunc)MemoryGetProcAddress(dll, "mpv_command_string");
-    mpvErrorString         = (mpvErrorStringFunc)MemoryGetProcAddress(dll, "mpv_error_string");
-    mpvWaitEvent           = (mpvWaitEventFunc)MemoryGetProcAddress(dll, "mpv_wait_event");
-    mpvGetProperty         = (mpvGetPropertyFunc)MemoryGetProcAddress(dll, "mpv_get_property");
-    mpvCommandAsync        = (mpvCommandAsyncFunc)MemoryGetProcAddress(dll, "mpv_command_async");
-    mpvGetPropertyString   = (mpvGetPropertyStringFunc)MemoryGetProcAddress(dll, "mpv_get_property_string");
-    mpvFreeNodeContents    = (mpvFreeNodeContentsFunc)MemoryGetProcAddress(dll, "mpv_free_node_contents");
-    mpvSetOption           = (mpvSetOptionFunc)MemoryGetProcAddress(dll, "mpv_set_option");
-    mpvFree                = (mpvFreeFunc)MemoryGetProcAddress(dll, "mpv_free");
-    mpvRenderContextCreate = (mpvRenderContextCreateFunc)MemoryGetProcAddress(dll, "mpv_render_context_create");
-    mpvRenderContextUpdate = (mpvRenderContextUpdateFunc)MemoryGetProcAddress(dll, "mpv_render_context_update");
-    mpvRenderContextFree   = (mpvRenderContextFreeFunc)MemoryGetProcAddress(dll, "mpv_render_context_free");
-    mpvRenderContextRender = (mpvRenderContextRenderFunc)MemoryGetProcAddress(dll, "mpv_render_context_render");
-    mpvRenderContextSetUpdateCallback =
-        (mpvRenderContextSetUpdateCallbackFunc)MemoryGetProcAddress(dll, "mpv_render_context_set_update_callback");
-    mpvRenderContextReportSwap =
-        (mpvRenderContextReportSwapFunc)MemoryGetProcAddress(dll, "mpv_render_context_report_swap");
+        brls::Logger::info("Load external `{}`", dllPath);
+        initMpvProc(hMpv, GetProcAddress);
+    }
 #endif
     this->init();
     // Destroy mpv when application exit
@@ -276,11 +297,6 @@ void MPVCore::init() {
     mpvSetOptionString(mpv, "hr-seek", "yes");
     mpvSetOptionString(mpv, "reset-on-next-file", "speed,pause");
 
-    if (MPVCore::VIDEO_ASPECT != "-1") {
-        mpvSetOptionString(mpv, "video-aspect-override", MPVCore::VIDEO_ASPECT.c_str());
-        video_aspect = aspectConverter(MPVCore::VIDEO_ASPECT);
-    }
-
     mpvSetOption(mpv, "brightness", MPV_FORMAT_DOUBLE, &MPVCore::VIDEO_BRIGHTNESS);
     mpvSetOption(mpv, "contrast", MPV_FORMAT_DOUBLE, &MPVCore::VIDEO_CONTRAST);
     mpvSetOption(mpv, "saturation", MPV_FORMAT_DOUBLE, &MPVCore::VIDEO_SATURATION);
@@ -305,17 +321,8 @@ void MPVCore::init() {
 
     // hardware decoding
     if (HARDWARE_DEC) {
-#ifdef __SWITCH__
-        mpvSetOptionString(mpv, "hwdec", "auto");
-#elif defined(__PSV__)
-        mpvSetOptionString(mpv, "hwdec", "vita-copy");
-        brls::Logger::info("MPV hardware decode: vita-copy");
-#elif defined(PS4)
-        mpvSetOptionString(mpv, "hwdec", "no");
-#else
         mpvSetOptionString(mpv, "hwdec", PLAYER_HWDEC_METHOD.c_str());
         brls::Logger::info("MPV hardware decode: {}", PLAYER_HWDEC_METHOD);
-#endif
     } else {
         mpvSetOptionString(mpv, "hwdec", "no");
     }
@@ -335,7 +342,6 @@ void MPVCore::init() {
 #endif
     // 过低的值可能导致部分直播流无法正确播放
     mpvSetOptionString(mpv, "demuxer-lavf-analyzeduration", "0.4");
-    mpvSetOptionString(mpv, "demuxer-lavf-probe-info", "nostreams");
     mpvSetOptionString(mpv, "demuxer-lavf-probescore", "24");
 
     // log
@@ -343,9 +349,9 @@ void MPVCore::init() {
     // mpvSetOptionString(mpv, "msg-level", "all=no");
     if (MPVCore::TERMINAL) {
         mpvSetOptionString(mpv, "terminal", "yes");
-#ifdef _DEBUG
-        mpvSetOptionString(mpv, "msg-level", "all=v");
-#endif
+        if ( brls::Logger::getLogLevel() >= brls::LogLevel::LOG_DEBUG ) {
+            mpvSetOptionString(mpv, "msg-level", "all=v");
+        }
     }
 
     if (mpvInitialize(mpv) < 0) {
@@ -388,6 +394,13 @@ void MPVCore::init() {
                               {MPV_RENDER_PARAM_DEKO3D_INIT_PARAMS, &deko_init_params},
                               {MPV_RENDER_PARAM_ADVANCED_CONTROL, &advanced_control},
                               {MPV_RENDER_PARAM_INVALID, nullptr}};
+#elif defined(BOREALIS_USE_D3D11)
+    mpv_dxgi_init_params init_params{D3D11_CONTEXT->getDevice(), D3D11_CONTEXT->getSwapChain()};
+    mpv_render_param params[] {
+        {MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_DXGI)},
+        {MPV_RENDER_PARAM_DXGI_INIT_PARAMS, &init_params},
+        {MPV_RENDER_PARAM_INVALID, nullptr},
+    };
 #else
     int advanced_control{1};
     mpv_opengl_init_params gl_init_params{get_proc_address, nullptr};
@@ -401,7 +414,9 @@ void MPVCore::init() {
         mpvTerminateDestroy(mpv);
         brls::fatal("failed to initialize mpv GL context");
     }
-
+#ifdef BOREALIS_USE_D3D11
+    wiliwili::initCrashDump();
+#endif
     brls::Logger::info("MPV Version: {}", mpvGetPropertyString(mpv, "mpv-version"));
     brls::Logger::info("FFMPEG Version: {}", mpvGetPropertyString(mpv, "ffmpeg-version"));
     command_async("set", "audio-client-name", APPVersion::getPackageName());
@@ -622,8 +637,10 @@ void MPVCore::setFrameSize(brls::Rect r) {
     mpvRenderContextReportSwap(mpv_context);
 #elif !defined(MPV_USE_FB)
     // Using default framebuffer
+#ifndef BOREALIS_USE_D3D11
     this->mpv_fbo.w = brls::Application::windowWidth;
     this->mpv_fbo.h = brls::Application::windowHeight;
+#endif
     command_async("set", "video-margin-ratio-right",
                   (brls::Application::contentWidth - rect.getMaxX()) / brls::Application::contentWidth);
     command_async("set", "video-margin-ratio-bottom",
@@ -705,6 +722,8 @@ void MPVCore::draw(brls::Rect area, float alpha) {
         mpvRenderContextRender(this->mpv_context, mpv_params);
 #ifdef BOREALIS_USE_DEKO3D
         videoContext->queueWaitFence(&doneFence);
+#elif defined(BOREALIS_USE_D3D11)
+        D3D11_CONTEXT->beginFrame();
 #else
         glBindFramebuffer(GL_FRAMEBUFFER, default_framebuffer);
         glViewport(0, 0, brls::Application::windowWidth, brls::Application::windowHeight);
@@ -1026,6 +1045,7 @@ void MPVCore::reset() {
     this->playback_time  = 0;
     this->video_progress = 0;
     this->mpv_error_code = 0;
+    this->video_aspect   = aspectConverter(MPVCore::VIDEO_ASPECT);
 
     // 软硬解切换后应该手动设置一次渲染尺寸
     // 切换视频前设置渲染尺寸可以顺便将上一条视频的最后一帧画面清空
@@ -1037,7 +1057,11 @@ void MPVCore::setUrl(const std::string &url, const std::string &extra, const std
     if (extra.empty()) {
         command_async("loadfile", url, method);
     } else {
+#if MPV_CLIENT_API_VERSION < MPV_MAKE_VERSION(2, 3)
         command_async("loadfile", url, method, extra);
+#else
+        command_async("loadfile", url, method, "0", extra);
+#endif
     }
 }
 
@@ -1085,7 +1109,22 @@ void MPVCore::setSpeed(double value) {
 void MPVCore::setAspect(const std::string &value) {
     MPVCore::VIDEO_ASPECT = value;
     video_aspect          = aspectConverter(MPVCore::VIDEO_ASPECT);
-    command_async("set", "video-aspect-override", MPVCore::VIDEO_ASPECT);
+    if (value == "-2") {
+        // 拉伸全屏
+        command_async("set", "keepaspect", "no");
+        command_async("set", "video-aspect-override", "-1");
+        command_async("set", "panscan", "0.0");
+    } else if (value == "-3") {
+        // 裁剪填充
+        command_async("set", "keepaspect", "yes");
+        command_async("set", "video-aspect-override", "-1");
+        command_async("set", "panscan", "1.0");
+    } else {
+        // 指定比例
+        command_async("set", "keepaspect", "yes");
+        command_async("set", "video-aspect-override", MPVCore::VIDEO_ASPECT);
+        command_async("set", "panscan", "0.0");
+    }
 }
 
 void MPVCore::setBrightness(int value) {

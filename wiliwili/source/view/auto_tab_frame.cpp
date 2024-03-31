@@ -18,6 +18,7 @@
 */
 
 #include <borealis/views/rectangle.hpp>
+#include <utility>
 
 #include "view/auto_tab_frame.hpp"
 #include "view/svg_image.hpp"
@@ -27,7 +28,6 @@
  * auto tab frame
  */
 using namespace brls::literals;
-using namespace brls;
 
 const std::string autoTabFrameContentXML = R"xml(
     <brls:Box
@@ -113,6 +113,8 @@ void AutoTabFrame::setRefreshAction(const std::function<void()>& event) {
     this->refreshButton->setVisibility(brls::Visibility::VISIBLE);
 }
 
+void AutoTabFrame::setTabChangedAction(const std::function<void(size_t)>& event) { this->tabChangedAction = event; }
+
 void AutoTabFrame::setDemandMode(bool value) { this->isDemandMode = value; }
 
 void AutoTabFrame::setSideBarPosition(AutoTabBarPosition position) {
@@ -150,8 +152,8 @@ void AutoTabFrame::addTab(AutoSidebarItem* tab, TabViewCreator creator) {
     tab->setActiveBackgroundColor(this->tabItemActiveBackgroundColor);
     tab->setActiveTextColor(this->tabItemActiveTextColor);
 
-    this->addItem(tab, creator, [this](brls::View* view) {
-        AutoSidebarItem* sidebarItem = (AutoSidebarItem*)view;
+    this->addItem(tab, std::move(creator), [this](brls::View* view) {
+        auto* sidebarItem = (AutoSidebarItem*)view;
 
         // Only trigger when the sidebar item gains focus
         if (!view->isFocused()) return;
@@ -166,23 +168,12 @@ void AutoTabFrame::addTab(AutoSidebarItem* tab, TabViewCreator creator) {
 
         this->setTabAttachedView(newContent);
 
-        if (!newContent) return;
-
-        newContent->registerAction(
-            "hints/back"_i18n, brls::BUTTON_B,
-            [this](View* view) {
-                if (brls::Application::getInputType() == brls::InputType::TOUCH)
-                    this->dismiss();
-                else
-                    brls::Application::giveFocus(this->sidebar);
-                return true;
-            },
-            false, false, brls::SOUND_BACK);
+        if (this->tabChangedAction) this->tabChangedAction(sidebarItem->getCurrentIndex());
     });
     auto isDefaultTab = this->sidebar->getChildren().size() - 1 == this->getDefaultTabIndex();
 
     if (isDefaultTab || !isDemandMode) {
-        AutoSidebarItem* item = (AutoSidebarItem*)this->sidebar->getChildren()[this->sidebar->getChildren().size() - 1];
+        auto* item = (AutoSidebarItem*)this->sidebar->getChildren()[this->sidebar->getChildren().size() - 1];
         View* newContent      = item->getAttachedView();
         if (!newContent) {
             newContent = item->createAttachedView();
@@ -331,8 +322,11 @@ AutoTabFrame::~AutoTabFrame() {
 void AutoTabFrame::setTabAttachedView(brls::View* newContent) {
     // Remove the existing tab if it exists
     if (this->activeTab) {
-        this->removeView(this->activeTab,
-                         false);  // will call willDisappear but not delete
+        // will call willDisappear but not delete
+        this->removeView(this->activeTab, false);
+        // onHide will be called
+        auto v = dynamic_cast<AttachedView*>(this->activeTab);
+        if (v) v->onHide();
         this->activeTab = nullptr;
     }
     if (!newContent) {
@@ -341,6 +335,9 @@ void AutoTabFrame::setTabAttachedView(brls::View* newContent) {
     newContent->setGrow(1.0f);
     this->addView(newContent);  // addView calls willAppear
     this->activeTab = newContent;
+    // onHide will be called
+    auto v = dynamic_cast<AttachedView*>(this->activeTab);
+    if (v) v->onShow();
 }
 
 void AutoTabFrame::setDefaultTabIndex(size_t index) { this->sidebar->setDefaultFocusedIndex(index); }
@@ -441,9 +438,9 @@ void AutoTabFrame::clearItems() {
     this->setLastFocusedView(nullptr);
 }
 
-Box* AutoTabFrame::getSidebar() { return this->sidebar; }
+brls::Box* AutoTabFrame::getSidebar() { return this->sidebar; }
 
-View* AutoTabFrame::getActiveTab() { return this->activeTab; }
+brls::View* AutoTabFrame::getActiveTab() { return this->activeTab; }
 
 void AutoTabFrame::focus2Sidebar(View* tabView) {
     AutoTabFrame* frame = dynamic_cast<AutoTabFrame*>(tabView->getParent());
@@ -492,7 +489,7 @@ void AutoTabFrame::setItemActiveTextColor(NVGcolor c) {
     }
 }
 
-void AutoTabFrame::draw(NVGcontext* vg, float x, float y, float width, float height, Style style, FrameContext* ctx) {
+void AutoTabFrame::draw(NVGcontext* vg, float x, float y, float width, float height, brls::Style style, brls::FrameContext* ctx) {
     //todo: 最后绘制刷新按钮
 
     if (this->sidebar && this->sidebar->getChildren().size() == 0) {
@@ -831,10 +828,20 @@ brls::View* AutoSidebarItem::createAttachedView() {
     if (!this->attachedView) {
         brls::fatal("AutoSidebarItem create attached View error");
     }
+    this->attachedView->registerAction(
+        "hints/back"_i18n, brls::BUTTON_B,
+        [this](View* view) {
+            if (brls::Application::getInputType() == brls::InputType::TOUCH)
+                this->dismiss();
+            else
+                brls::Application::giveFocus(this);
+            return true;
+        },
+        false, false, brls::SOUND_BACK);
     return this->attachedView;
 }
 
-View* AutoSidebarItem::getView(std::string id) {
+brls::View* AutoSidebarItem::getView(std::string id) {
     View* v = Box::getView(id);
     if (v) return v;
     if (this->attachedView) {
@@ -902,7 +909,7 @@ AutoTabBarStyle AutoSidebarItem::getTabStyle(std::string value) {
     if (enumMap.count(value) > 0)
         return enumMap[value];
     else
-        fatal("Illegal value \"" + value + "\" for AutoSidebarItem attribute \"style\"");
+        brls::fatal("Illegal value \"" + value + "\" for AutoSidebarItem attribute \"style\"");
 }
 
 void AutoSidebarItem::setDefaultBackgroundColor(NVGcolor c) {
@@ -967,8 +974,12 @@ AutoSidebarItem* AttachedView::getTabBar() { return this->tab; }
 
 void AttachedView::onCreate() {}
 
+void AttachedView::onShow() {}
+
+void AttachedView::onHide() {}
+
 void AttachedView::registerTabAction(std::string hintText, enum brls::ControllerButton button,
-                                     brls::ActionListener action, bool hidden, bool allowRepeating, enum Sound sound) {
+                                     brls::ActionListener action, bool hidden, bool allowRepeating, enum brls::Sound sound) {
     this->registerAction(hintText, button, action, hidden, allowRepeating, sound);
     if (this->tab) this->tab->registerAction(hintText, button, action, hidden, allowRepeating, sound);
 }

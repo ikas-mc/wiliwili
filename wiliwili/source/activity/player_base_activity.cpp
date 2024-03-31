@@ -252,6 +252,12 @@ void BasePlayerActivity::setCommonData() {
                              return true;
                          });
 
+    // 暂停
+    this->registerAction("toggle", brls::ControllerButton::BUTTON_SPACE, [this](...) -> bool {
+        this->video->togglePlay();
+        return true;
+    }, true);
+
     this->btnQR->getParent()->addGestureRecognizer(new brls::TapGestureRecognizer(this->btnQR->getParent()));
 
     this->btnAgree->getParent()->addGestureRecognizer(new brls::TapGestureRecognizer(this->btnAgree->getParent()));
@@ -355,24 +361,6 @@ void BasePlayerActivity::setCommonData() {
     if (brls::Application::ORIGINAL_WINDOW_HEIGHT < 720) video->hideStatusLabel();
 
     video->hideOSDLockButton();
-}
-
-void BasePlayerActivity::showShareDialog(const std::string& link) {
-    auto container = new brls::Box(brls::Axis::COLUMN);
-    container->setJustifyContent(brls::JustifyContent::CENTER);
-    container->setAlignItems(brls::AlignItems::CENTER);
-    auto qr = new QRImage();
-    qr->setSize(brls::Size(256, 256));
-    qr->setImageFromQRContent(link);
-    qr->setMargins(20, 10, 10, 10);
-    container->addView(qr);
-    auto hint = new brls::Label();
-    hint->setText("wiliwili/player/qr"_i18n);
-    hint->setMargins(0, 10, 10, 10);
-    container->addView(hint);
-    auto dialog = new brls::Dialog(container);
-    dialog->addButton("hints/ok"_i18n, []() {});
-    dialog->open();
 }
 
 void BasePlayerActivity::showCollectionDialog(int64_t id, int videoType) {
@@ -707,7 +695,10 @@ void BasePlayerActivity::onError(const std::string& error) {
     MPVCore::instance().reset();
     bool forceClose = true;
     std::string msg = error;
-    if (pystring::count(error, "10403") > 0) {
+    if (pystring::count(error, "87007") > 0 || pystring::count(error, "87008") > 0) {
+        forceClose = false;
+        msg        = "该视频为「充电」专属视频";
+    } else if (pystring::count(error, "10403") > 0) {
         forceClose = false;
         msg        = "大会员专享限制";
     } else if (pystring::count(error, "404") > 0) {

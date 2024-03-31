@@ -204,13 +204,7 @@ void VideoDetail::requestVideoInfo(const std::string& bvid) {
                     for (const auto& i : this->videoDetailResult.pages) {
                         if (i.cid == videoDetailPage.cid) {
                             brls::Logger::debug("获取视频分P列表: PV {}", i.cid);
-                            int progress    = videoDetailPage.progress;
                             videoDetailPage = i;
-                            //用于从历史记录加载进播放页面，视频开始播放时自动跳转
-                            videoDetailPage.progress = progress;
-
-                            //上报历史记录
-                            if (progress < 0) progress = 0;
                             break;
                         }
                     }
@@ -287,11 +281,7 @@ void VideoDetail::requestVideoUrl(std::string bvid, int cid, bool requestHistory
             brls::Logger::error("{}", error);
             brls::sync([ASYNC_TOKEN, error]() {
                 ASYNC_RELEASE
-                if (error == "87007") {
-                    this->onError("该视频为「充电」专属视频");
-                } else {
-                    this->onError("请求视频地址失败\n" + error);
-                }
+                this->onError("请求视频地址失败\n" + error);
             });
         });
     // 请求当前视频在线人数
@@ -570,7 +560,7 @@ void VideoDetail::requestVideoPageDetail(const std::string& bvid, int cid, bool 
     BILI::get_page_detail(
         bvid, cid,
         [ASYNC_TOKEN, requestVideoHistory](const bilibili::VideoPageResult& result) {
-#if defined(BOREALIS_USE_OPENGL) && !defined(__PSV__)
+#if defined(BOREALIS_USE_D3D11) || defined(BOREALIS_USE_OPENGL) && !defined(__PSV__)
             if (!result.mask_url.empty()) {
                 brls::Logger::debug("获取防遮挡数据: {}", result.mask_url);
                 auto url = pystring::startswith(result.mask_url, "//") ? "https:" + result.mask_url : result.mask_url;

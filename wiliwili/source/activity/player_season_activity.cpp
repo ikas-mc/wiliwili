@@ -10,6 +10,7 @@
 #include "fragment/player_collection.hpp"
 #include "fragment/player_fragments.hpp"
 #include "fragment/season_evaluate.hpp"
+#include "fragment/share_dialog.hpp"
 #include "utils/config_helper.hpp"
 #include "utils/dialog_helper.hpp"
 #include "utils/number_helper.hpp"
@@ -109,7 +110,13 @@ void PlayerSeasonActivity::onContentAvailable() {
 
     // 二维码按钮
     this->btnQR->getParent()->registerClickAction([this](...) {
-        this->showShareDialog(this->episodeResult.link);
+        auto dialog = new ShareDialog();
+#if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
+        dialog->open(episodeResult.link, seasonInfo.season_title + " " + episodeResult.title, seasonInfo.evaluate,
+                     seasonInfo.cover);
+#else
+        dialog->open(this->episodeResult.link);
+#endif
         return true;
     });
 

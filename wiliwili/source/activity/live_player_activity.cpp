@@ -164,9 +164,20 @@ void LiveActivity::setVideoQuality() {
 void LiveActivity::onContentAvailable() {
     brls::Logger::debug("LiveActivity: onContentAvailable");
 
-    this->video->registerAction("", brls::BUTTON_B, [](...) {
-        brls::Logger::debug("exit live");
-        brls::Application::popActivity();
+    MPVCore::instance().setAspect(
+        ProgramConfig::instance().getSettingItem(SettingItem::PLAYER_ASPECT, std::string{"-1"}));
+
+    this->video->registerAction("", brls::BUTTON_B, [this](...) {
+        if (this->video->isOSDLock()) {
+            this->video->toggleOSD();
+        } else {
+            if (this->video->getTvControlMode() && this->video->isOSDShown()) {
+                this->video->toggleOSD();
+                return true;
+            }
+            brls::Logger::debug("exit live");
+            brls::Application::popActivity();
+        }
         return true;
     });
 
@@ -202,6 +213,15 @@ void LiveActivity::onContentAvailable() {
             });
         }
     });
+
+    // 暂停
+    this->registerAction(
+        "toggle", brls::ControllerButton::BUTTON_SPACE,
+        [this](...) -> bool {
+            this->video->togglePlay();
+            return true;
+        },
+        true);
 
     // 调整清晰度
     this->registerAction("wiliwili/player/quality"_i18n, brls::ControllerButton::BUTTON_START,

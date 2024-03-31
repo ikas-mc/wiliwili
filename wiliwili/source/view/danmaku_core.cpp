@@ -389,7 +389,7 @@ void DanmakuCore::draw(NVGcontext *vg, float x, float y, float width, float heig
     nvgIntersectScissor(vg, x, y, width, height);
 
     // 设置遮罩
-#ifdef BOREALIS_USE_OPENGL
+#if defined(BOREALIS_USE_OPENGL) || defined(BOREALIS_USE_D3D11)
     if (DANMAKU_SMART_MASK && maskData.isLoaded()) {
         // 先根据时间选择分片
         while (maskSliceIndex < maskData.sliceData.size() - 1) {
@@ -422,10 +422,16 @@ void DanmakuCore::draw(NVGcontext *vg, float x, float y, float width, float heig
         auto bitmap         = maskDocument->renderToBitmap(maskDocument->width(), maskDocument->height());
         uint32_t maskWidth  = bitmap.width();
         uint32_t maskHeight = bitmap.height();
+#ifdef BOREALIS_USE_D3D11
+        // 使用 dx11 的拷贝交换
+        const static int imageFlags = NVG_IMAGE_STREAMING | NVG_IMAGE_COPY_SWAP | MASK_IMG_FLAG;
+#else
+        const static int imageFlags = MASK_IMG_FLAG;
+#endif
         if (maskTex != 0) {
             nvgUpdateImage(vg, maskTex, bitmap.data());
         } else {
-            maskTex = nvgCreateImageRGBA(vg, (int)maskWidth, (int)maskHeight, MASK_IMG_FLAG, bitmap.data());
+            maskTex = nvgCreateImageRGBA(vg, (int)maskWidth, (int)maskHeight, imageFlags, bitmap.data());
         }
 
         // 设置遮罩
@@ -443,12 +449,26 @@ void DanmakuCore::draw(NVGcontext *vg, float x, float y, float width, float heig
         nvgBeginPath(vg);
         float drawHeight = height, drawWidth = width;
         float drawX = x, drawY = y;
-        if (maskWidth * height > maskHeight * width) {
-            drawHeight = maskHeight * width / maskWidth;
-            drawY      = y + (height - drawHeight) / 2;
+        if (MPVCore::instance().video_aspect == -2) {
+            // 拉伸全屏
+        } else if (MPVCore::instance().video_aspect == -3) {
+            // 裁剪填充
+            if (maskWidth * height > maskHeight * width) {
+                drawWidth = maskWidth * height / maskHeight;
+                drawX     = x + (width - drawWidth) / 2;
+            } else {
+                drawHeight = maskHeight * width / maskWidth;
+                drawY      = y + (height - drawHeight) / 2;
+            }
         } else {
-            drawWidth = maskWidth * height / maskHeight;
-            drawX     = x + (width - drawWidth) / 2;
+            // 自由比例
+            if (maskWidth * height > maskHeight * width) {
+                drawHeight = maskHeight * width / maskWidth;
+                drawY      = y + (height - drawHeight) / 2;
+            } else {
+                drawWidth = maskWidth * height / maskHeight;
+                drawX     = x + (width - drawWidth) / 2;
+            }
         }
         auto paint = nvgImagePattern(vg, drawX, drawY, drawWidth, drawHeight, 0, maskTex, alpha);
         nvgRect(vg, x, y, width, height);
@@ -689,7 +709,7 @@ skip_mask:
     }
 
     // 清空遮罩
-#if !defined(DEBUG_MASK) && defined(BOREALIS_USE_OPENGL)
+#if !defined(DEBUG_MASK) && (defined(BOREALIS_USE_OPENGL) || defined(BOREALIS_USE_D3D11))
     if (maskTex > 0) {
         nvgBeginPath(vg);
         nvgRect(vg, x, y, width, height);

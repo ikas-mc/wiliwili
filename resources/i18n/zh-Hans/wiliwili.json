@@ -36,6 +36,10 @@
         "proxy": "网络代理",
         "proxy_hint": "示例: http://127.0.0.1:7890"
       },
+      "ui": {
+        "header": "界面设置",
+        "tv_osd": "电视风格播放器"
+      },
       "others": {
         "header": "其他",
         "vibration": "手柄振动",
@@ -217,6 +221,13 @@
       "history_delete": "删除",
       "suggest": "猜你想搜"
     },
+    "order": {
+      "all": "综合排序",
+      "click": "最多播放",
+      "pubdate": "最新发布",
+      "dm": "最多弹幕",
+      "stow": "最多收藏"
+    },
     "tab": "搜索",
     "t0": "历史",
     "t1": "热搜",
@@ -276,6 +287,7 @@
     "recommend": "推荐",
     "uploaded": "投稿",
     "qr": "手机扫码观看/分享",
+    "clipboard": "已复制到剪贴板",
     "comment": "评论",
     "current": "人正在看",
     "share": "分享",
@@ -343,6 +355,8 @@
       },
       "aspect": {
         "header": "视频比例",
+        "crop": "填充",
+        "stretch": "拉伸",
         "auto": "自动"
       },
       "shader": {

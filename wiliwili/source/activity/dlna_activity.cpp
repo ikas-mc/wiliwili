@@ -21,6 +21,8 @@ DLNAActivity::DLNAActivity() {
     GA("open_dlna")
 
     MPVCore::instance().reset();
+    MPVCore::instance().setAspect(
+        ProgramConfig::instance().getSettingItem(SettingItem::PLAYER_ASPECT, std::string{"-1"}));
 
     ip = brls::Application::getPlatform()->getIpAddress();
     ip = GET_SETTING(SettingItem::DLNA_IP, ip);
@@ -157,11 +159,6 @@ DLNAActivity::DLNAActivity() {
 }
 
 void DLNAActivity::onContentAvailable() {
-    this->video->registerAction("", brls::BUTTON_B, [](...) {
-        brls::Application::popActivity();
-        return true;
-    });
-
     this->video->hideDLNAButton();
     this->video->hideDanmakuButton();
     this->video->hideVideoQualityButton();
@@ -183,7 +180,20 @@ void DLNAActivity::onContentAvailable() {
     this->video->registerAction(
         "cancel", brls::ControllerButton::BUTTON_B,
         [this](brls::View* view) -> bool {
-            this->dismiss();
+            if (this->video->isOSDLock()) {
+                this->video->toggleOSD();
+            } else {
+                this->dismiss();
+            }
+            return true;
+        },
+        true);
+
+    // 暂停
+    this->registerAction(
+        "toggle", brls::ControllerButton::BUTTON_SPACE,
+        [this](...) -> bool {
+            this->video->togglePlay();
             return true;
         },
         true);

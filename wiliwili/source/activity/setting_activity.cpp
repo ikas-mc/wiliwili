@@ -29,6 +29,10 @@
 #include "borealis/platforms/desktop/desktop_platform.hpp"
 #endif
 
+#ifdef __linux__
+#include "borealis/platforms/desktop/steam_deck.hpp"
+#endif
+
 using namespace brls::literals;
 
 const std::string OPENSOURCE =
@@ -191,6 +195,11 @@ void SettingActivity::onContentAvailable() {
         p->openBrowser(ProgramConfig::instance().getConfigDir());
         return true;
     });
+#ifdef __linux__
+    if (brls::isSteamDeck()) {
+        btnOpenConfig->setVisibility(brls::Visibility::GONE);
+    }
+#endif
 #else
     btnOpenConfig->setVisibility(brls::Visibility::GONE);
 #endif
@@ -238,12 +247,20 @@ void SettingActivity::onContentAvailable() {
     });
 
     labelAboutVersion->setText(version
-#ifdef __SWITCH__
-#ifdef BOREALIS_USE_DEKO3D
-                               + " (deko3d)"
+#if defined(BOREALIS_USE_DEKO3D)
+                                + " (deko3d)"
+#elif defined(BOREALIS_USE_OPENGL)
+#if defined(USE_GL2)
+                                + " (OpenGL2)"
+#elif defined(USE_GLES2)
+                                + " (OpenGL ES2)"
+#elif defined(USE_GLES3)
+                                + " (OpenGL ES3)"
 #else
-                               + " (OpenGL)"
+                                + " (OpenGL)"
 #endif
+#elif defined(BOREALIS_USE_D3D11)
+                                + " (D3D11)"
 #endif
     );
     labelOpensource->setText(OPENSOURCE);
@@ -310,6 +327,11 @@ void SettingActivity::onContentAvailable() {
                            TVSearchActivity::TV_MODE = value;
                        });
 
+    /// TV OSD Control Mode
+    cellTvOSD->init(
+        "wiliwili/setting/app/ui/tv_osd"_i18n, conf.getBoolOption(SettingItem::PLAYER_OSD_TV_MODE),
+        [](bool value) { ProgramConfig::instance().setSettingItem(SettingItem::PLAYER_OSD_TV_MODE, value); });
+
 /// Gamepad vibration
 #ifdef __SWITCH__
     cellVibration->init("wiliwili/setting/app/others/vibration"_i18n,
@@ -322,7 +344,7 @@ void SettingActivity::onContentAvailable() {
 #endif
 
 /// Fullscreen
-#if defined(__linux__) || defined(_WIN32)
+#ifdef ALLOW_FULLSCREEN
     cellFullscreen->init("wiliwili/setting/app/others/fullscreen"_i18n, conf.getBoolOption(SettingItem::FULLSCREEN),
                          [](bool value) {
                              ProgramConfig::instance().setSettingItem(SettingItem::FULLSCREEN, value);
@@ -530,8 +552,7 @@ void SettingActivity::onContentAvailable() {
 #ifdef __PSV__
                            {"0MB (" + "hints/off"_i18n + ")", "5MB", "10MB"},
 #else
-        {"0MB (" + "hints/off"_i18n + ")", "10MB", "20MB", "50MB", "100MB",
-         "200MB", "500MB"},
+        {"0MB (" + "hints/off"_i18n + ")", "10MB", "20MB", "50MB", "100MB"},
 #endif
                            conf.getIntOptionIndex(SettingItem::PLAYER_INMEMORY_CACHE), [](int data) {
                                auto inmemoryOption =

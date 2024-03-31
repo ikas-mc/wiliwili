@@ -83,7 +83,9 @@ project(wiliwili)
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "3")
 set(VERSION_REVISION "0")
-set(VERSION_BUILD "0")
+if (NOT VERSION_BUILD)
+    set(VERSION_BUILD "0")
+endif ()
 set(PROJECT_AUTHOR "xfangfang")
 set(PACKAGE_NAME cn.xfangfang.wiliwili)
 set(VITA_TITLEID "WILIWILI0")
@@ -193,7 +195,15 @@ add_subdirectory(library)
 
 # Main Target
 program_target(${PROJECT_NAME} "${MAIN_SRC}")
-set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)
+set_target_properties(${PROJECT_NAME} PROPERTIES
+        CXX_STANDARD 17
+        UNITY_BUILD ${BRLS_UNITY_BUILD}
+)
+set_source_files_properties(
+        wiliwili/source/utils/config_helper.cpp
+        wiliwili/source/activity/setting_activity.cpp
+        wiliwili/source/activity/dlna_activity.cpp
+        PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 
 # building release file
 if (PLATFORM_DESKTOP)
@@ -231,6 +241,8 @@ if (PLATFORM_DESKTOP)
                 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/linux/${PACKAGE_NAME}.appdata.xml"
                 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/linux/${PACKAGE_NAME}.desktop")
     endif ()
+
+    list(APPEND APP_PLATFORM_LIB clip)
 elseif (PLATFORM_IOS)
     ios_bundle(
             "${CMAKE_CURRENT_SOURCE_DIR}/library/borealis/demo/ios/tvos/Splash.storyboard"

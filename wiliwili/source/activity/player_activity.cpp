@@ -17,6 +17,7 @@
 #include "fragment/player_collection.hpp"
 #include "fragment/player_fragments.hpp"
 #include "fragment/player_evaluate.hpp"
+#include "fragment/share_dialog.hpp"
 #include "view/grid_dropdown.hpp"
 #include "view/svg_image.hpp"
 #include "view/video_view.hpp"
@@ -38,6 +39,7 @@ public:
         bilibili::UserUploadedVideoResult& r = this->list[index];
         item->setCard(r.pic + ImageHelper::h_ext, r.title, r.author + " · " + wiliwili::sec2TimeDate(r.created),
                       r.play == -1 ? "-" : wiliwili::num2w(r.play), wiliwili::num2w(r.video_review), r.length);
+        item->setCharging(r.is_charging_arc);
         return item;
     }
 
@@ -181,7 +183,13 @@ void PlayerActivity::onContentAvailable() {
 
     // 二维码按钮
     this->btnQR->getParent()->registerClickAction([this](...) {
-        this->showShareDialog("https://www.bilibili.com/video/" + this->videoDetailResult.bvid);
+        auto dialog = new ShareDialog();
+#if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
+        dialog->open(fmt::format("https://www.bilibili.com/video/{}/", videoDetailResult.bvid), videoDetailResult.title,
+                     videoDetailResult.desc, videoDetailResult.pic, videoDetailResult.owner.name);
+#else
+        dialog->open("https://www.bilibili.com/video/" + this->videoDetailResult.bvid);
+#endif
         return true;
     });
 

@@ -84,12 +84,21 @@ set(BUILD_SHARED_LIBS OFF)
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 add_subdirectory(lunasvg EXCLUDE_FROM_ALL)
 
+# add dacap
+if (PLATFORM_DESKTOP)
+    set(CLIP_EXAMPLES OFF)
+    set(CLIP_TESTS OFF)
+    add_subdirectory(clip EXCLUDE_FROM_ALL)
+    target_include_directories(clip PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+endif ()
+
 # add mongoose
 if (USE_SYSTEM_MONGOOSE)
     find_library(MONGOOSE_LIBRARY NAMES mongoose REQUIRED)
     add_library(mongoose UNKNOWN IMPORTED)
     set_property(TARGET mongoose PROPERTY IMPORTED_LOCATION ${MONGOOSE_LIBRARY})
 else ()
+    set(MG_ENABLE_IPV6 ON)
     add_subdirectory(mongoose EXCLUDE_FROM_ALL)
 endif ()
 
@@ -102,17 +111,12 @@ endif ()
 # add borealis
 add_subdirectory(borealis/library)
 
-# add libpdr (不使用项目内的 cmake 配置，因为 wiliwili 使用支持 switch 的 mongoose)
+# add libpdr (不使用 pdr 项目内的 cmake 配置，因为其内的 mongoose 不支持 psv/switch)
 file(GLOB_RECURSE PDR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/libpdr/src/*.cpp)
 add_library(pdr ${PDR_SRC})
 set_property(TARGET pdr PROPERTY CXX_STANDARD 17)
 target_include_directories(pdr PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libpdr/include)
 target_link_libraries(pdr mongoose tinyxml2)
-if (PLATFORM_SWITCH)
-    target_compile_options(pdr PUBLIC -D__SWITCH__ -DMG_ARCH=10086)
-elseif (PLATFORM_PSV)
-    target_compile_options(pdr PUBLIC -D__PSV__ -DMG_ARCH=10010)
-endif ()
 
 add_library(wiliwiliLibExtra INTERFACE)
 target_link_libraries(wiliwiliLibExtra INTERFACE cpr::cpr qrcode)

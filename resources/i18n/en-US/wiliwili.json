@@ -36,6 +36,10 @@
         "proxy": "Proxy",
         "proxy_hint": "example: http://127.0.0.1:7890"
       },
+      "ui": {
+        "header": "UI",
+        "tv_osd": "TV style OSD control"
+      },
       "others": {
         "header": "Others",
         "vibration": "Gamepad vibration",
@@ -217,6 +221,13 @@
       "history_delete": "Delete",
       "suggest": "Suggest"
     },
+    "order": {
+      "all": "All",
+      "click": "Click",
+      "pubdate": "PublishDate",
+      "dm": "Danmaku",
+      "stow": "Favorite"
+    },
     "tab": "Search",
     "t0": "History",
     "t1": "Hots",
@@ -276,6 +287,7 @@
     "recommend": "Recommend",
     "uploaded": "Others",
     "qr": "Scan QR code to watch/share",
+    "clipboard": "Copied to clipboard",
     "comment": "Comment",
     "current": " people are watching",
     "share": "Share",
@@ -343,6 +355,8 @@
       },
       "aspect": {
         "header": "Video aspect",
+        "crop": "Crop",
+        "stretch": "Stretch",
         "auto": "Auto"
       },
       "shader": {

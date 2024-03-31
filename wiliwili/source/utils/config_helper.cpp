@@ -17,6 +17,7 @@
 #include "utils/thread_helper.hpp"
 #include "utils/image_helper.hpp"
 #include "utils/config_helper.hpp"
+#include "utils/crash_helper.hpp"
 #include "utils/vibration_helper.hpp"
 #include "utils/ban_list.hpp"
 #include "utils/string_helper.hpp"
@@ -88,7 +89,7 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
     {SettingItem::HOME_WINDOW_STATE, {"home_window_state", {}, {}, 0}},
     {SettingItem::DLNA_IP, {"dlna_ip", {}, {}, 0}},
     {SettingItem::DLNA_NAME, {"dlna_name", {}, {}, 0}},
-    {SettingItem::PLAYER_ASPECT, {"player_aspect", {"-1", "4:3", "16:9"}, {}, 0}},
+    {SettingItem::PLAYER_ASPECT, {"player_aspect", {"-1", "-2", "-3", "4:3", "16:9"}, {}, 0}},
     {SettingItem::HTTP_PROXY, {"http_proxy", {}, {}, 0}},
     {SettingItem::DANMAKU_STYLE_FONT, {"danmaku_style_font", {"stroke", "incline", "shadow", "pure"}, {}, 0}},
 
@@ -124,6 +125,7 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
 #endif
     {SettingItem::PLAYER_HWDEC_CUSTOM, {"player_hwdec_custom", {}, {}, 0}},
     {SettingItem::PLAYER_EXIT_FULLSCREEN_ON_END, {"player_exit_fullscreen_on_end", {}, {}, 1}},
+    {SettingItem::PLAYER_OSD_TV_MODE, {"player_osd_tv_mode", {}, {}, 0}},
     {SettingItem::OPENCC_ON, {"opencc", {}, {}, 1}},
     {SettingItem::DANMAKU_ON, {"danmaku", {}, {}, 1}},
     {SettingItem::DANMAKU_FILTER_BOTTOM, {"danmaku_filter_bottom", {}, {}, 1}},
@@ -147,19 +149,19 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
 /// number
 #if defined(__PSV__)
     {SettingItem::PLAYER_INMEMORY_CACHE, {"player_inmemory_cache", {"0MB", "5MB", "10MB"}, {0, 5, 10}, 0}},
+#elif defined(__SWITCH__)
+    {SettingItem::PLAYER_INMEMORY_CACHE,
+     {"player_inmemory_cache", {"0MB", "10MB", "20MB", "50MB", "100MB"}, {0, 10, 20, 50, 100}, 0}},
 #else
     {SettingItem::PLAYER_INMEMORY_CACHE,
-     {"player_inmemory_cache",
-      {"0MB", "10MB", "20MB", "50MB", "100MB", "200MB", "500MB"},
-      {0, 10, 20, 50, 100, 200, 500},
-      1}},
+     {"player_inmemory_cache", {"0MB", "10MB", "20MB", "50MB", "100MB"}, {0, 10, 20, 50, 100}, 1}},
 #endif
     {
         SettingItem::PLAYER_DEFAULT_SPEED,
         {"player_default_speed",
-         {"2.0x", "1.75x", "1.5x", "1.25x", "1.0x", "0.75x", "0.5x"},
-         {200, 175, 150, 125, 100, 75, 50},
-         0},
+         {"4.0x", "3.0x", "2.0x", "1.75x", "1.5x", "1.25x", "1.0x", "0.75x", "0.5x", "0.25x"},
+         {400, 300, 200, 175, 150, 125, 100, 75, 50, 25},
+         2},
     },
     {SettingItem::PLAYER_VOLUME, {"player_volume", {}, {}, 0}},
     {SettingItem::TEXTURE_CACHE_NUM, {"texture_cache_num", {}, {}, 0}},
@@ -237,11 +239,6 @@ void ProgramConfig::setProgramConfig(const ProgramConfig& conf) {
     this->refreshToken  = conf.refreshToken;
     this->searchHistory = conf.searchHistory;
     this->seasonCustom  = conf.seasonCustom;
-    brls::Logger::info("client: {}/{}", conf.client, conf.device);
-    for (const auto& c : conf.cookie) {
-        brls::Logger::info("cookie: {}:{}", c.first, c.second);
-    }
-    brls::Logger::info("refreshToken: {}", conf.refreshToken);
     brls::Logger::info("setting: {}", conf.setting.dump());
 }
 
@@ -588,7 +585,9 @@ void ProgramConfig::load() {
     brls::Application::getWindowCreationDoneEvent()->subscribe([this]() {
         // 初始化弹幕字体
         std::string danmakuFont = getConfigDir() + "/danmaku.ttf";
-        if (access(danmakuFont.c_str(), F_OK) != -1 && brls::Application::loadFontFromFile("danmaku", danmakuFont)) {
+        // 只在应用模式下加载自定义字体 减少switch上的内存占用
+        if (brls::Application::getPlatform()->isApplicationMode() && access(danmakuFont.c_str(), F_OK) != -1 &&
+            brls::Application::loadFontFromFile("danmaku", danmakuFont)) {
             // 自定义弹幕字体
             int danmakuFontId = brls::Application::getFont("danmaku");
             nvgAddFallbackFontId(brls::Application::getNVGContext(), danmakuFontId,
@@ -712,6 +711,7 @@ void ProgramConfig::save() {
 
 void ProgramConfig::init() {
     brls::Logger::info("wiliwili {}", APPVersion::instance().git_tag);
+    wiliwili::initCrashDump();
 
     // Set min_threads and max_threads of http thread pool
     curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -772,10 +772,6 @@ void ProgramConfig::init() {
         diskCookie,
         [](const Cookie& newCookie, const std::string& token) {
             brls::Logger::info("======== write cookies to disk");
-            for (const auto& c : newCookie) {
-                brls::Logger::info("cookie: {}:{}", c.first, c.second);
-            }
-            brls::Logger::info("refreshToken: {}", token);
             ProgramConfig::instance().setCookie(newCookie);
             ProgramConfig::instance().setRefreshToken(token);
             // 用户登录后，将默认清晰度设置为 1080P 60FPS
@@ -953,4 +949,12 @@ void ProgramConfig::addSeasonCustomSetting(unsigned int key, const SeasonCustomI
 void ProgramConfig::setSeasonCustomSetting(const SeasonCustomSetting& value) {
     this->seasonCustom = value;
     this->save();
+}
+
+void ProgramConfig::toggleFullscreen() {
+    bool value = !getBoolOption(SettingItem::FULLSCREEN);
+    setSettingItem(SettingItem::FULLSCREEN, value);
+    VideoContext::FULLSCREEN = value;
+    brls::Application::getPlatform()->getVideoContext()->fullScreen(value);
+    GA("player_setting", {{"fullscreen", value ? "true" : "false"}});
 }

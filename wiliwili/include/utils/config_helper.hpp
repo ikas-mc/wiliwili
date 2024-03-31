@@ -61,6 +61,7 @@ enum class SettingItem {
     PLAYER_SATURATION,
     PLAYER_HUE,
     PLAYER_GAMMA,
+    PLAYER_OSD_TV_MODE,
     VIDEO_QUALITY,
     TEXTURE_CACHE_NUM,
     OPENCC_ON,
@@ -254,6 +255,8 @@ public:
     void addSeasonCustomSetting(unsigned int key, const SeasonCustomItem& item);
 
     void setSeasonCustomSetting(const SeasonCustomSetting& setting);
+
+    void toggleFullscreen();
 
     std::vector<CustomTheme> customThemes;
     Cookie cookie = {{"DedeUserID", "0"}};

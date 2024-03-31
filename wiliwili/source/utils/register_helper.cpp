@@ -20,11 +20,13 @@
 #include "fragment/mine_collection_video_list.hpp"
 #include "fragment/mine_bangumi.hpp"
 #include "fragment/search_tab.hpp"
+#include "fragment/search_order.hpp"
 #include "fragment/search_video.hpp"
 #include "fragment/search_cinema.hpp"
 #include "fragment/search_bangumi.hpp"
 #include "fragment/search_hots.hpp"
 #include "fragment/search_history.hpp"
+#include "fragment/share_dialog.hpp"
 
 #include "utils/config_helper.hpp"
 
@@ -68,9 +70,10 @@ void Register::initCustomView() {
     brls::Application::registerXMLView("UpUserSmall", UpUserSmall::create);
     brls::Application::registerXMLView("VideoComment", VideoComment::create);
     brls::Application::registerXMLView("ButtonClose", ButtonClose::create);
-    brls::Application::registerXMLView("CheckBox", CheckBox::create);
-    brls::Application::registerXMLView("SelectorCell", SelectorCell::create);
+    brls::Application::registerXMLView("CheckBox", BiliCheckBox::create);
+    brls::Application::registerXMLView("SelectorCell", BiliSelectorCell::create);
     brls::Application::registerXMLView("AnimationImage", AnimationImage::create);
+    brls::Application::registerXMLView("ShareBox", ShareBox::create);
 
     //     Register fragments
     brls::Application::registerXMLView("HomeTab", HomeTab::create);
@@ -91,6 +94,7 @@ void Register::initCustomView() {
     brls::Application::registerXMLView("MineCollectionVideoList", MineCollectionVideoList::create);
     brls::Application::registerXMLView("MineBangumi", MineBangumi::create);
     brls::Application::registerXMLView("SearchTab", SearchTab::create);
+    brls::Application::registerXMLView("SearchOrder", SearchOrder::create);
     brls::Application::registerXMLView("SearchVideo", SearchVideo::create);
     brls::Application::registerXMLView("SearchCinema", SearchCinema::create);
     brls::Application::registerXMLView("SearchBangumi", SearchBangumi::create);
@@ -138,7 +142,7 @@ void Register::initCustomTheme() {
 
     // 分割线颜色
     brls::Theme::getLightTheme().addColor("color/line", nvgRGB(208, 208, 208));
-    brls::Theme::getDarkTheme().addColor("color/line", nvgRGB(208, 208, 208));
+    brls::Theme::getDarkTheme().addColor("color/line", nvgRGB(100, 100, 100));
 
     // 粉色背景，用于扁平TabBar背景色
     brls::Theme::getLightTheme().addColor("color/pink_1", nvgRGB(252, 237, 241));
