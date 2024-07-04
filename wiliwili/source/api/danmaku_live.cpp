@@ -14,9 +14,6 @@
 #include <queue>
 #include <condition_variable>
 #include <string>
-#ifdef _WIN32
-#include <winsock2.h>
-#endif
 
 namespace bilibili {
 void BilibiliClient::get_live_danmaku_info(int roomid, const std::function<void(LiveDanmakuinfo)> &callback,
@@ -45,24 +42,15 @@ static void add_msg(std::string &&a) {
     cv.notify_one();
 }
 
-LiveDanmaku::LiveDanmaku() {
-#ifdef _WIN32
-    WSADATA wsaData;
-    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (result != 0) {
-        printf("WSAStartup failed with error: %d\n", result);
-    }
-#endif
-}
+LiveDanmaku::LiveDanmaku() {}
 
 LiveDanmaku::~LiveDanmaku() {
     disconnect();
-#ifdef _WIN32
-    WSACleanup();
-#endif
+    std::lock_guard<std::mutex> lock(msg_q_mutex);
+    while (!msg_q.empty()) msg_q.pop();
 }
 
-void LiveDanmaku::connect(int room_id, int64_t uid, const bilibili::LiveDanmakuinfo &info) {
+void LiveDanmaku::connect(int room_id, uint64_t uid, const bilibili::LiveDanmakuinfo &info) {
     if (connected.load(std::memory_order_acquire)) {
         return;
     }
@@ -132,8 +120,7 @@ void LiveDanmaku::disconnect() {
     connected.store(false, std::memory_order_release);
 
     // Wakeup the mainloop
-    if (mgr && nc)
-        mg_wakeup(this->mgr, this->nc->id, nullptr, 0);
+    if (mgr && nc) mg_wakeup(this->mgr, this->nc->id, nullptr, 0);
 
     // Stop Mongoose event loop thread
     if (mongoose_thread.joinable()) {
@@ -154,7 +141,7 @@ bool LiveDanmaku::is_connected() { return connected.load(std::memory_order_acqui
 
 bool LiveDanmaku::is_evOK() { return ms_ev_ok.load(std::memory_order_acquire); }
 
-void LiveDanmaku::send_join_request(const int room_id, const int64_t uid) {
+void LiveDanmaku::send_join_request(const int room_id, const uint64_t uid) {
     json join_request            = {{"uid", uid},
                                     {"roomid", room_id},
                                     {"protover", 2},
@@ -206,7 +193,7 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *ev_da
     } else if (ev == MG_EV_WS_MSG) {
         MG_DEBUG(("%p %s", nc->fd, (char *)ev_data));
         struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
-        add_msg(std::string(wm->data.ptr, wm->data.len));
+        add_msg(std::string(wm->data.buf, wm->data.len));
     } else if (ev == MG_EV_CLOSE) {
         MG_DEBUG(("%p %s", nc->fd, (char *)ev_data));
         liveDanmaku->ms_ev_ok.store(false, std::memory_order_release);
