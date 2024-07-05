@@ -49,7 +49,9 @@ extern in_addr_t secondary_dns;
 
 #ifdef __WINRT__
 #include <winrt/windows.applicationmodel.core.h>
-#endif#ifndef PATH_MAX
+#endif
+
+#ifndef PATH_MAX
 #define PATH_MAX 256
 #endif
 
