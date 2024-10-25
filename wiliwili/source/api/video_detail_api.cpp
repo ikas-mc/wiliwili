@@ -2,6 +2,7 @@
 #include <utility>
 
 #include "bilibili.h"
+#include "bilibili/api.h"
 #include "bilibili/util/http.hpp"
 #include "bilibili/result/video_detail_result.h"
 #include "bilibili/result/home_live_result.h"
@@ -50,8 +51,7 @@ void BilibiliClient::get_webmask(const std::string& url, int64_t rangeStart, int
                 ERROR_MSG("Network error. [Status code: " + std::to_string(r.status_code) + " ]", r.status_code);
             }
         },
-        cpr::Range{start, end}, HTTP::VERIFY, HTTP::PROXIES, cpr::Url{url}, HTTP::HEADERS, HTTP::COOKIES,
-        cpr::Timeout{HTTP::TIMEOUT});
+        cpr::Range{start, end}, cpr::Url{url}, CPR_HTTP_BASE);
 }
 
 void BilibiliClient::get_video_pagelist(const std::string& bvid,
@@ -92,22 +92,21 @@ void BilibiliClient::get_video_url(uint64_t aid, uint64_t cid, int qn, const std
 void BilibiliClient::get_video_url_cast(uint64_t oid, uint64_t cid, int type, int qn, const std::string& csrf,
                                         const std::function<void(VideoUrlResult)>& callback,
                                         const ErrorCallback& error) {
+    //todo: csrf 不是 mobile_access_key，导致无法获取大会员或付费视频链接
     HTTP::getResultAsync<VideoUrlResult>(Api::PlayUrlCast,
-                                         {{"build", "105001"},
+                                         {{"access_key", csrf},
                                           {"is_proj", "1"},
-                                          {"device_type", "1"},
-                                          {"protocol", "1"},
+                                          {"actionKey", "appkey"},
+                                          {"device_type", "0"},
+                                          {"protocol", "0"},
                                           {"mobile_access_key", csrf},
-                                          {"mobi_app", "android_tv_yst"},
-                                          {"platform", "android"},
+                                          {"platform", "ios"},
                                           {"playurl_type", std::to_string(type)},
                                           {"object_id", std::to_string(oid)},
                                           {"cid", std::to_string(cid)},
                                           {"qn", std::to_string(qn)},
-                                          {"fourk", "1"},
-                                          {"fnval", "128"},
-                                          {"fnver", "0"}},
-                                         callback, error);
+                                          {"fourk", "1"}},
+                                         callback, error, true);
 }
 
 void BilibiliClient::get_comment(const std::string& oid, int next, int mode, int type,
@@ -127,7 +126,7 @@ void BilibiliClient::get_comment(const std::string& oid, int next, int mode, int
         error);
 }
 
-void BilibiliClient::get_comment_detail(const std::string& access_key, const std::string& oid, int64_t rpid,
+void BilibiliClient::get_comment_detail(const std::string& access_key, const std::string& oid, uint64_t rpid,
                                         size_t next, int type,
                                         const std::function<void(VideoSingleCommentDetail)>& callback,
                                         const ErrorCallback& error) {
@@ -267,8 +266,7 @@ void BilibiliClient::get_danmaku(uint64_t cid, const std::function<void(std::str
                 printf("ERROR: %s\n", e.what());
             }
         },
-        HTTP::VERIFY, HTTP::PROXIES, cpr::Url{Api::VideoDanmaku}, HTTP::HEADERS,
-        cpr::Parameters({{"oid", std::to_string(cid)}}), HTTP::COOKIES, cpr::Timeout{HTTP::TIMEOUT});
+        cpr::Url{Api::VideoDanmaku}, cpr::Parameters({{"oid", std::to_string(cid)}}), CPR_HTTP_BASE);
 }
 
 void BilibiliClient::get_highlight_progress(uint64_t cid,
@@ -287,8 +285,7 @@ void BilibiliClient::get_highlight_progress(uint64_t cid,
                 ERROR_MSG(e.what(), -1);
             }
         },
-        HTTP::VERIFY, HTTP::PROXIES, cpr::Url{Api::VideoHighlight}, HTTP::HEADERS,
-        cpr::Parameters({{"cid", std::to_string(cid)}}), HTTP::COOKIES, cpr::Timeout{HTTP::TIMEOUT});
+        cpr::Url{Api::VideoHighlight}, cpr::Parameters({{"cid", std::to_string(cid)}}), CPR_HTTP_BASE);
 }
 
 void BilibiliClient::get_subtitle(const std::string& link, const std::function<void(SubtitleData)>& callback,
@@ -309,8 +306,7 @@ void BilibiliClient::get_subtitle(const std::string& link, const std::function<v
                 printf("ERROR: %s\n", e.what());
             }
         },
-        HTTP::VERIFY, HTTP::PROXIES, cpr::Url{url}, HTTP::HEADERS, cpr::Parameters({}), HTTP::COOKIES,
-        cpr::Timeout{HTTP::TIMEOUT});
+        cpr::Url{url}, cpr::Parameters({}), CPR_HTTP_BASE);
 }
 
 /// 视频页 上报历史记录
@@ -360,13 +356,22 @@ void BilibiliClient::be_agree(const std::string& access_key, uint64_t aid, bool 
     HTTP::postResultAsync(Api::LikeWeb, {}, payload, callback, error);
 }
 
-void BilibiliClient::be_agree_comment(const std::string& access_key, const std::string& oid, int64_t rpid, bool is_like,
+void BilibiliClient::be_agree_comment(const std::string& access_key, const std::string& oid, uint64_t rpid, bool is_like,
                                       int type, const std::function<void()>& callback, const ErrorCallback& error) {
     cpr::Payload payload = {
         {"oid", oid},         {"rpid", std::to_string(rpid)}, {"action", is_like ? "1" : "0"},
         {"csrf", access_key}, {"type", std::to_string(type)}, {"ordering", "heat"},
     };
     HTTP::postResultAsync(Api::CommentLike, {}, payload, callback, error);
+}
+
+void BilibiliClient::be_disagree_comment(const std::string& access_key, const std::string& oid, uint64_t rpid, bool is_dislike,
+                                      int type, const std::function<void()>& callback, const ErrorCallback& error) {
+    cpr::Payload payload = {
+        {"oid", oid},         {"rpid", std::to_string(rpid)}, {"action", is_dislike ? "1" : "0"},
+        {"csrf", access_key}, {"type", std::to_string(type)}, {"ordering", "heat"},
+    };
+    HTTP::postResultAsync(Api::CommentDisLike, {}, payload, callback, error);
 }
 
 void BilibiliClient::ugc_season_subscribe(int id, const std::string& csrf, const std::function<void()>& callback,
@@ -389,7 +394,7 @@ void BilibiliClient::ugc_season_unsubscribe(int id, const std::string& csrf, con
     HTTP::postResultAsync(Api::UGCSeasonUnsubscribe, {}, payload, callback, error);
 }
 
-void BilibiliClient::delete_comment(const std::string& access_key, const std::string& oid, int64_t rpid, int type,
+void BilibiliClient::delete_comment(const std::string& access_key, const std::string& oid, uint64_t rpid, int type,
                                     const std::function<void()>& callback, const ErrorCallback& error) {
     cpr::Payload payload = {
         {"oid", oid},
@@ -401,7 +406,7 @@ void BilibiliClient::delete_comment(const std::string& access_key, const std::st
 }
 
 void BilibiliClient::add_comment(const std::string& access_key, const std::string& message, const std::string& oid,
-                                 int64_t parent, int64_t root, int type,
+                                 uint64_t parent, uint64_t root, int type,
                                  const std::function<void(VideoCommentAddResult)>& callback,
                                  const ErrorCallback& error) {
     cpr::Payload payload = {

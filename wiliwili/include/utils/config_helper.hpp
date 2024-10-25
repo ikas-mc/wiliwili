@@ -8,6 +8,7 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <unordered_set>
 #include <nlohmann/json.hpp>
 #include "analytics.h"
 #include "borealis/core/singleton.hpp"
@@ -35,8 +36,10 @@ enum class SettingItem {
     APP_LANG,       // 应用语言
     APP_RESOURCES,  // 自定义界面布局
     APP_UI_SCALE,   // 界面缩放
+    APP_SWAP_ABXY,  // A-B 交换 和 X-Y 交换
     SCROLL_SPEED,   // 列表滑动速度
     HISTORY_REPORT,
+    PLAYER_AUTO_PLAY, // 进入详情页自动播放
     PLAYER_STRATEGY,
     PLAYER_BOTTOM_BAR,
     PLAYER_HIGHLIGHT_BAR,
@@ -91,6 +94,7 @@ enum class SettingItem {
     HTTP_PROXY,
     HTTP_PROXY_STATUS,
     TLS_VERIFY,
+    UP_FILTER,
 };
 
 class APPVersion : public brls::Singleton<APPVersion> {
@@ -266,6 +270,7 @@ public:
     SeasonCustomSetting seasonCustom;
     std::string httpProxy;
     std::string httpsProxy;
+    std::unordered_set<uint64_t> upFilter; // 此列表中的up主在推荐页面将不显示
 
     static std::unordered_map<SettingItem, ProgramOption> SETTING_MAP;
 };

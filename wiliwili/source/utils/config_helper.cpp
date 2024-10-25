@@ -7,11 +7,15 @@
 #elif defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
 #include <unistd.h>
 #include <borealis/platforms/desktop/desktop_platform.hpp>
+#if defined(_WIN32)
+#include <shlobj.h>
+#endif
 #endif
 
 #include <borealis/core/application.hpp>
 #include <borealis/core/cache_helper.hpp>
 #include <borealis/core/touch/pan_gesture.hpp>
+#include <borealis/views/edit_text_dialog.hpp>
 #include <cpr/filesystem.h>
 
 #include "bilibili.h"
@@ -100,6 +104,7 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
     {SettingItem::DANMAKU_STYLE_FONT, {"danmaku_style_font", {"stroke", "incline", "shadow", "pure"}, {}, 0}},
 
     /// bool
+    {SettingItem::APP_SWAP_ABXY, {"app_swap_abxy", {}, {}, 0}},
     {SettingItem::GAMEPAD_VIBRATION, {"gamepad_vibration", {}, {}, 1}},
 #if defined(IOS) || defined(__PSV__)
     {SettingItem::HIDE_BOTTOM_BAR, {"hide_bottom_bar", {}, {}, 1}},
@@ -117,14 +122,11 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
 #endif
 
     {SettingItem::HISTORY_REPORT, {"history_report", {}, {}, 1}},
+    {SettingItem::PLAYER_AUTO_PLAY, {"player_auto_play", {}, {}, 1}},
     {SettingItem::PLAYER_BOTTOM_BAR, {"player_bottom_bar", {}, {}, 1}},
     {SettingItem::PLAYER_HIGHLIGHT_BAR, {"player_highlight_bar", {}, {}, 0}},
     {SettingItem::PLAYER_SKIP_OPENING_CREDITS, {"player_skip_opening_credits", {}, {}, 1}},
-#if defined(__PSV__) || defined(PS4)
     {SettingItem::PLAYER_LOW_QUALITY, {"player_low_quality", {}, {}, 1}},
-#else
-    {SettingItem::PLAYER_LOW_QUALITY, {"player_low_quality", {}, {}, 0}},
-#endif
 #if defined(IOS) || defined(__PSV__) || defined(__SWITCH__)
     {SettingItem::PLAYER_HWDEC, {"player_hwdec", {}, {}, 1}},
 #else
@@ -230,6 +232,9 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
     {SettingItem::ON_TOP_WINDOW_HEIGHT, {"on_top_window_height", {"270"}, {270}, 0}},
     {SettingItem::ON_TOP_MODE, {"on_top_mode", {"off", "always", "auto"}, {0, 1, 2}, 0}},
     {SettingItem::SCROLL_SPEED, {"scroll_speed", {}, {}, 0}},
+
+    /// Custom
+    {SettingItem::UP_FILTER, {"up_filter", {}, {}, 0}},
 };
 
 ProgramConfig::ProgramConfig() = default;
@@ -361,8 +366,8 @@ void ProgramConfig::loadHomeWindowState() {
 
     if (hWidth == 0 || hHeight == 0) return;
 
-    int minWidth  = getIntOption(SettingItem::MINIMUM_WINDOW_WIDTH);
-    int minHeight = getIntOption(SettingItem::MINIMUM_WINDOW_HEIGHT);
+    uint32_t minWidth  = getIntOption(SettingItem::MINIMUM_WINDOW_WIDTH);
+    uint32_t minHeight = getIntOption(SettingItem::MINIMUM_WINDOW_HEIGHT);
     if (hWidth < minWidth) hWidth = minWidth;
     if (hHeight < minHeight) hHeight = minHeight;
 
@@ -411,8 +416,14 @@ void ProgramConfig::load() {
     // 默认加载环境变量
     const char* http_proxy  = getenv("http_proxy");
     const char* https_proxy = getenv("https_proxy");
-    if (http_proxy) this->httpProxy = http_proxy;
-    if (https_proxy) this->httpsProxy = https_proxy;
+    if (http_proxy) {
+        this->httpProxy = http_proxy;
+        brls::Logger::info("Load http proxy from env: {}", this->httpProxy);
+    }
+    if (https_proxy) {
+        this->httpsProxy = https_proxy;
+        brls::Logger::info("Load https proxy from env: {}", this->httpsProxy);
+    }
     // 如果设置开启了自定义代理，则读取配置文件中的代理设置
     if (getBoolOption(SettingItem::HTTP_PROXY_STATUS)) {
         this->httpProxy  = getSettingItem(SettingItem::HTTP_PROXY, this->httpProxy);
@@ -466,7 +477,7 @@ void ProgramConfig::load() {
     // 初始化视频清晰度
     VideoDetail::defaultQuality = getSettingItem(SettingItem::VIDEO_QUALITY,
 #ifdef __PSV__
-                                                 16);
+                                                 32);
 #else
                                                  116);
 #endif
@@ -476,7 +487,7 @@ void ProgramConfig::load() {
     }
 
     // 加载完成后自动播放
-    MPVCore::AUTO_PLAY = true;
+    MPVCore::AUTO_PLAY = getBoolOption(SettingItem::PLAYER_AUTO_PLAY);
 
     // 初始化默认的倍速设定
     MPVCore::VIDEO_SPEED = getIntOption(SettingItem::PLAYER_DEFAULT_SPEED);
@@ -548,7 +559,11 @@ void ProgramConfig::load() {
     VideoView::HIGHLIGHT_PROGRESS_BAR = getBoolOption(SettingItem::PLAYER_HIGHLIGHT_BAR);
 
     // 初始化是否使用硬件加速
+#ifdef __PSV__
+    MPVCore::HARDWARE_DEC = true;
+#else
     MPVCore::HARDWARE_DEC = getBoolOption(SettingItem::PLAYER_HWDEC);
+#endif
 
     // 初始化自定义的硬件加速方案
     MPVCore::PLAYER_HWDEC_METHOD = getSettingItem(SettingItem::PLAYER_HWDEC_CUSTOM, MPVCore::PLAYER_HWDEC_METHOD);
@@ -572,7 +587,6 @@ void ProgramConfig::load() {
     int scrollSpeed = getSettingItem(SettingItem::SCROLL_SPEED, 100);
 #endif
     brls::PanGestureRecognizer::panFactor = scrollSpeed * 0.01f;
-
 
     // 初始化i18n
     std::set<std::string> i18nData{
@@ -610,6 +624,13 @@ void ProgramConfig::load() {
 
     // 初始化一些在创建窗口之后才能初始化的内容
     brls::Application::getWindowCreationDoneEvent()->subscribe([this]() {
+        // 是否交换按键
+        if (getBoolOption(SettingItem::APP_SWAP_ABXY)) {
+            // 对于 PSV/PS4 来说，初始化时会加载系统设置，可能在那时已经交换过按键
+            // 所以这里需要读取 isSwapInputKeys 的值，而不是直接设置为 true
+            brls::Application::setSwapInputKeys(!brls::Application::isSwapInputKeys());
+        }
+
         // 初始化弹幕字体
         std::string danmakuFont = getConfigDir() + "/danmaku.ttf";
         // 只在应用模式下加载自定义字体 减少switch上的内存占用
@@ -652,6 +673,40 @@ void ProgramConfig::load() {
         brls::Application::getPlatform()->setWindowSizeLimits(minWidth, minHeight, 0, 0);
         checkOnTop();
 #endif
+
+        // Init keyboard shortcut
+        brls::Application::getPlatform()->getInputManager()->getKeyboardKeyStateChanged()->subscribe(
+            [](brls::KeyState state) {
+                if (!state.pressed) return;
+                switch (state.key) {
+#ifndef __APPLE__
+                    case brls::BRLS_KBD_KEY_F11:
+                        ProgramConfig::instance().toggleFullscreen();
+                        break;
+#endif
+                    case brls::BRLS_KBD_KEY_F: {
+                        // 在编辑框弹出时不触发
+                        auto activityStack  = brls::Application::getActivitiesStack();
+                        brls::Activity* top = activityStack[activityStack.size() - 1];
+                        if(!dynamic_cast<brls::EditTextDialog*>(top->getContentView())){
+                            ProgramConfig::instance().toggleFullscreen();
+                        }
+                        break;
+                    }
+                    case brls::BRLS_KBD_KEY_SPACE: {
+                        // 只在顶部的 Activity 中存在播放器组件时触发
+                        auto activityStack  = brls::Application::getActivitiesStack();
+                        brls::Activity* top = activityStack[activityStack.size() - 1];
+                        VideoView* video    = dynamic_cast<VideoView*>(top->getContentView()->getView("video"));
+                        if (video) {
+                            video->togglePlay();
+                        }
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            });
     });
 
 #ifdef IOS
@@ -659,6 +714,9 @@ void ProgramConfig::load() {
     // 窗口将要关闭时, 保存窗口状态配置
     brls::Application::getExitEvent()->subscribe([this]() { saveHomeWindowState(); });
 #endif
+
+    // 加载屏蔽的up主
+    ProgramConfig::instance().upFilter = getSettingItem(SettingItem::UP_FILTER, std::unordered_set<uint64_t>{});
 
     // 检查不欢迎名单
     wiliwili::checkBanList();
@@ -753,10 +811,9 @@ void ProgramConfig::checkOnTop() {
             return;
         case 2: {
             // 自动模式，根据窗口大小判断是否需要切换到置顶模式
-            double factor = brls::Application::getPlatform()->getVideoContext()->getScaleFactor();
-            int minWidth =
-                ProgramConfig::instance().getIntOption(SettingItem::ON_TOP_WINDOW_WIDTH) * factor + 0.1;
-            int minHeight =
+            double factor     = brls::Application::getPlatform()->getVideoContext()->getScaleFactor();
+            uint32_t minWidth = ProgramConfig::instance().getIntOption(SettingItem::ON_TOP_WINDOW_WIDTH) * factor + 0.1;
+            uint32_t minHeight =
                 ProgramConfig::instance().getIntOption(SettingItem::ON_TOP_WINDOW_HEIGHT) * factor + 0.1;
             bool onTop = brls::Application::windowWidth <= minWidth || brls::Application::windowHeight <= minHeight;
             brls::Application::getPlatform()->setWindowAlwaysOnTop(onTop);
@@ -821,7 +878,11 @@ void ProgramConfig::init() {
         } else if (icon == "ps") {
             brls::FontLoader::USER_ICON_PATH = BRLS_ASSET("font/keymap_ps.ttf");
         } else {
-            brls::FontLoader::USER_ICON_PATH = BRLS_ASSET("font/keymap_keyboard.ttf");
+            if (getBoolOption(SettingItem::APP_SWAP_ABXY)) {
+                brls::FontLoader::USER_ICON_PATH = BRLS_ASSET("font/keymap_keyboard_swap.ttf");
+            } else {
+                brls::FontLoader::USER_ICON_PATH = BRLS_ASSET("font/keymap_keyboard.ttf");
+            }
         }
 #endif
     }
@@ -904,7 +965,11 @@ std::string ProgramConfig::getConfigDir() {
     return config + "/wiliwili";
 #endif
 #ifdef _WIN32
-    return std::string(getenv("LOCALAPPDATA")) + "\\xfangfang\\wiliwili";
+    WCHAR wpath[MAX_PATH];
+    std::vector<char> lpath(MAX_PATH);
+    SHGetSpecialFolderPathW(0, wpath, CSIDL_LOCAL_APPDATA, false);
+    WideCharToMultiByte(CP_UTF8, 0, wpath, std::wcslen(wpath), lpath.data(), lpath.size(), nullptr, nullptr);
+    return std::string(lpath.data()) + "\\xfangfang\\wiliwili";
 #endif
 #endif /* _DEBUG */
 #endif /* __SWITCH__ */

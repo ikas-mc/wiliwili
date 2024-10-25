@@ -4,7 +4,9 @@
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 #include "bilibili.h"
+#include "bilibili/api.h"
 #include "bilibili/util/md5.hpp"
 #include "curl/curl.h"
 #include "bilibili/util/http.hpp"
@@ -287,7 +289,7 @@ void BilibiliClient::get_collection_list_all(uint64_t rid, int type, const std::
         error);
 }
 
-void BilibiliClient::get_collection_video_list(int64_t id, int index, int num, int type,
+void BilibiliClient::get_collection_video_list(uint64_t id, int index, int num, int type,
                                                const std::function<void(CollectionVideoListResultWrapper)>& callback,
                                                const ErrorCallback& error) {
     HTTP::getResultAsync<CollectionVideoListResultWrapper>(

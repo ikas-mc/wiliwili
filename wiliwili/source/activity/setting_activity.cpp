@@ -189,20 +189,29 @@ void SettingActivity::onContentAvailable() {
         return true;
     });
 
-#if !defined(__SWITCH__) && !defined(IOS) && !defined(__PSV__) && !defined(PS4)
-    btnOpenConfig->registerClickAction([](...) -> bool {
-        auto* p = (brls::DesktopPlatform*)brls::Application::getPlatform();
-        p->openBrowser(ProgramConfig::instance().getConfigDir());
-        return true;
-    });
+#if defined(__SWITCH__) || defined(__PSV__) || defined(PS4)
+    btnOpenConfig->title->setText("wiliwili/setting/tools/others/config_dir"_i18n);
+#endif
 #ifdef __linux__
     if (brls::isSteamDeck()) {
-        btnOpenConfig->setVisibility(brls::Visibility::GONE);
+        btnOpenConfig->title->setText("wiliwili/setting/tools/others/config_dir"_i18n);
     }
 #endif
-#else
-    btnOpenConfig->setVisibility(brls::Visibility::GONE);
+    btnOpenConfig->registerClickAction([](...) -> bool {
+        auto configPath = ProgramConfig::instance().getConfigDir();
+        brls::Application::notify("wiliwili/setting/tools/others/config_dir"_i18n + ": " + configPath);
+#if !defined(__SWITCH__) && !defined(__PSV__) && !defined(PS4)
+#ifdef __linux__
+        if (!brls::isSteamDeck())
 #endif
+        {
+            auto* p = (brls::DesktopPlatform*)brls::Application::getPlatform();
+            p->openBrowser(configPath);
+        }
+#endif
+        return true;
+    });
+
     btnTutorialFont->registerClickAction([](...) -> bool {
         auto dialog =
             new brls::Dialog((brls::Box*)brls::View::createFromXMLResource("fragment/settings_tutorial_font.xml"));
@@ -241,26 +250,26 @@ void SettingActivity::onContentAvailable() {
     btnReleaseChecker->title->setText("wiliwili/setting/tools/others/release"_i18n + " (" + "hints/current"_i18n +
                                       ": " + version + ")");
     btnReleaseChecker->registerClickAction([](...) -> bool {
-        // todo: 弹出一个提示提醒用户正在检查更新
+        brls::Application::notify("wiliwili/setting/tools/others/checking_update"_i18n);
         APPVersion::instance().checkUpdate(0, true);
         return true;
     });
 
     labelAboutVersion->setText(version
 #if defined(BOREALIS_USE_DEKO3D)
-                                + " (deko3d)"
+                               + " (deko3d)"
 #elif defined(BOREALIS_USE_OPENGL)
 #if defined(USE_GL2)
-                                + " (OpenGL2)"
+                               + " (OpenGL2)"
 #elif defined(USE_GLES2)
-                                + " (OpenGL ES2)"
+                               + " (OpenGL ES2)"
 #elif defined(USE_GLES3)
-                                + " (OpenGL ES3)"
+                               + " (OpenGL ES3)"
 #else
-                                + " (OpenGL)"
+                               + " (OpenGL)"
 #endif
 #elif defined(BOREALIS_USE_D3D11)
-                                + " (D3D11)"
+                               + " (D3D11)"
 #endif
     );
     labelOpensource->setText(OPENSOURCE);
@@ -281,8 +290,9 @@ void SettingActivity::onContentAvailable() {
     auto& conf = ProgramConfig::instance();
 
     /// Hide bottom bar
-    cellHideBar->init("wiliwili/setting/app/others/hide_bottom"_i18n, conf.getBoolOption(SettingItem::HIDE_BOTTOM_BAR),
-                      [this](bool value) {
+    cellShowBar->init("wiliwili/setting/app/others/show_bottom"_i18n, !conf.getBoolOption(SettingItem::HIDE_BOTTOM_BAR),
+                      [](bool value) {
+                          value = !value;
                           ProgramConfig::instance().setSettingItem(SettingItem::HIDE_BOTTOM_BAR, value);
                           // 更新设置
                           brls::AppletFrame::HIDE_BOTTOM_BAR = value;
@@ -294,19 +304,13 @@ void SettingActivity::onContentAvailable() {
                               if (!frame) continue;
                               frame->setFooterVisibility(value ? brls::Visibility::GONE : brls::Visibility::VISIBLE);
                           }
-
-                          if (value) {
-                              ProgramConfig::instance().setSettingItem(SettingItem::HIDE_FPS, true);
-                              brls::Application::setFPSStatus(false);
-                          }
-                          this->cellHideFPS->setOn(true);
                       });
 
     /// Hide FPS
-    cellHideFPS->init("wiliwili/setting/app/others/hide_fps"_i18n, conf.getBoolOption(SettingItem::HIDE_FPS),
+    cellShowFPS->init("wiliwili/setting/app/others/show_fps"_i18n, !conf.getBoolOption(SettingItem::HIDE_FPS),
                       [](bool value) {
-                          ProgramConfig::instance().setSettingItem(SettingItem::HIDE_FPS, value);
-                          brls::Application::setFPSStatus(!value);
+                          ProgramConfig::instance().setSettingItem(SettingItem::HIDE_FPS, !value);
+                          brls::Application::setFPSStatus(value);
                       });
 
     /// Limited FPS
@@ -354,7 +358,7 @@ void SettingActivity::onContentAvailable() {
                              brls::Application::getPlatform()->getVideoContext()->fullScreen(value);
                          });
 
-    auto setOnTopCell = [this](bool enabled){
+    auto setOnTopCell = [this](bool enabled) {
         if (enabled) {
             cellOnTopMode->setDetailTextColor(brls::Application::getTheme()["brls/list/listItem_value_color"]);
         } else {
@@ -470,6 +474,13 @@ void SettingActivity::onContentAvailable() {
 #else
     selectorKeymap->setVisibility(brls::Visibility::GONE);
 #endif
+
+    /// Swap ABXY
+    btnKeymapSwap->init(
+        "wiliwili/setting/app/others/keymap/swap"_i18n, conf.getBoolOption(SettingItem::APP_SWAP_ABXY), [](bool data) {
+            ProgramConfig::instance().setSettingItem(SettingItem::APP_SWAP_ABXY, data);
+            DialogHelper::quitApp();
+        });
 
     /// App language
     static int langIndex = conf.getStringOptionIndex(SettingItem::APP_LANG);
@@ -623,10 +634,10 @@ void SettingActivity::onContentAvailable() {
             ProgramConfig::instance().setSettingItem(SettingItem::HTTP_PROXY, httpProxy);
             ProgramConfig::instance().setProxy(httpProxy);
         },
-        "http://127.0.0.1:7890", "wiliwili/setting/app/network/proxy_hint"_i18n, 64);
+        "wiliwili/setting/app/network/proxy_hint"_i18n, "wiliwili/setting/app/network/proxy_hint"_i18n, 64);
 
 /// Hardware decode
-#ifdef PS4
+#if defined(PS4) || defined(__PSV__)
     btnHWDEC->setVisibility(brls::Visibility::GONE);
 #else
     btnHWDEC->init("wiliwili/setting/app/playback/hwdec"_i18n, conf.getBoolOption(SettingItem::PLAYER_HWDEC),
@@ -637,6 +648,13 @@ void SettingActivity::onContentAvailable() {
                        MPVCore::instance().restart();
                    });
 #endif
+
+    /// Auto Play when open video detail page
+    btnAutoPlay->init("wiliwili/setting/app/playback/auto_play"_i18n, conf.getBoolOption(SettingItem::PLAYER_AUTO_PLAY),
+                      [](bool value) {
+                          ProgramConfig::instance().setSettingItem(SettingItem::PLAYER_AUTO_PLAY, value);
+                          MPVCore::AUTO_PLAY = value;
+                      });
 
     /// Decode quality
     btnQuality->init("wiliwili/setting/app/playback/low_quality"_i18n,

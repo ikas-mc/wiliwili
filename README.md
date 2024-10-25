@@ -78,7 +78,7 @@ hbmenu 自行选择路径。
 
 下载 `wiliwili-PSVita.vpk` 安装即可：[wiliwili releases](https://github.com/xfangfang/wiliwili/releases)
 
-目前只推荐观看 360P 分辨率使用，不过仍有相当大的提升空间，如果你愿意为此贡献欢迎开一个 PR 讨论了解更多。
+开启硬解后可以流畅播放 480P 视频，仍有相当大的提升空间，如果你愿意为此贡献欢迎开一个 PR 讨论了解更多。
 
 ### PS4
 
@@ -235,7 +235,7 @@ make -C build wiliwili -j$(sysctl -n hw.ncpu)
 
 ```shell
 # Ubuntu: install dependencies
-sudo apt install libcurl4-openssl-dev libmpv-dev libwebp-dev
+sudo apt install libssl-dev libmpv-dev libwebp-dev
 
 cmake -B build -DPLATFORM_DESKTOP=ON
 make -C build wiliwili -j$(nproc)
@@ -298,13 +298,12 @@ docker run --rm -v $(pwd):/data devkitpro/devkita64:20240202 \
 sudo dkp-pacman -S switch-glfw switch-libwebp switch-cmake switch-curl devkitA64
 
 # 3. 安装自定义依赖
-# devkitpro提供的部分依赖版本过低, 提供的 ffmpeg 无法播放网络视频
+# devkitpro提供的提供的 ffmpeg/mpv 无法播放网络视频
 # 手动编译方法请参考：scripts/README.md
 base_url="https://github.com/xfangfang/wiliwili/releases/download/v0.1.0"
 sudo dkp-pacman -U \
-    $base_url/switch-libass-0.17.1-1-any.pkg.tar.zst \
-    $base_url/switch-ffmpeg-6.1-5-any.pkg.tar.zst \
-    $base_url/switch-libmpv-0.36.0-2-any.pkg.tar.zst
+    $base_url/switch-ffmpeg-7.1-1-any.pkg.tar.zst \
+    $base_url/switch-libmpv-0.36.0-3-any.pkg.tar.zst
 
 # 4. build
 cmake -B cmake-build-switch -DPLATFORM_SWITCH=ON

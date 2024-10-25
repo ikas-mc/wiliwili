@@ -45,6 +45,7 @@ jobs:
       DIST_PS4: ${{ steps.info.outputs.DIST_PS4 }}
       DIST_DMG_PREFIX: ${{ steps.info.outputs.DIST_DMG_PREFIX }}
       DIST_INTEL_DMG: ${{ steps.info.outputs.DIST_INTEL_DMG }}
+      DIST_INTEL_OLD_DMG: ${{ steps.info.outputs.DIST_INTEL_OLD_DMG }}
       DIST_ARM_DMG: ${{ steps.info.outputs.DIST_ARM_DMG }}
       DIST_UNIVERSAL_DMG: ${{ steps.info.outputs.DIST_UNIVERSAL_DMG }}
       DIST_FLATPAK_X86_64: ${{ steps.info.outputs.DIST_FLATPAK_X86_64 }}
@@ -77,6 +78,7 @@ jobs:
           echo "DIST_PS4=wiliwili-PS4-${VERSION}" >> $GITHUB_OUTPUT
           echo "DIST_DMG_PREFIX=wiliwili-macOS" >> $GITHUB_OUTPUT
           echo "DIST_INTEL_DMG=wiliwili-macOS-IntelChip-${VERSION}" >> $GITHUB_OUTPUT
+          echo "DIST_INTEL_OLD_DMG=wiliwili-macOS-IntelChip_10.11-${VERSION}" >> $GITHUB_OUTPUT
           echo "DIST_ARM_DMG=wiliwili-macOS-AppleSilicon-${VERSION}" >> $GITHUB_OUTPUT
           echo "DIST_UNIVERSAL_DMG=wiliwili-macOS-Universal-${VERSION}" >> $GITHUB_OUTPUT
           echo "DIST_FLATPAK_X86_64=wiliwili-Linux-${VERSION}-x86_64" >> $GITHUB_OUTPUT
@@ -91,13 +93,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
-
-      - name: Rename Flatpak
-        if: github.event.inputs.release == 'true' && !cancelled()
-        run: |
-          tree
-          mv ${{ needs.version.outputs.DIST_FLATPAK_X86_64 }}/wiliwili-Linux-${{ needs.version.outputs.version }}.flatpak \
-            ${{ needs.version.outputs.DIST_FLATPAK_X86_64 }}/${{ needs.version.outputs.DIST_FLATPAK_X86_64 }}.flatpak
 
       - name: Package exe
         if: github.event.inputs.release == 'true' && !cancelled()
@@ -156,7 +151,7 @@ jobs:
             ${MINGW_PACKAGE_PREFIX}-gcc \
             ${MINGW_PACKAGE_PREFIX}-ninja unzip
 
-          curl -LO https://github.com/xfangfang/wiliwili/releases/download/v0.1.0/${MINGW_PACKAGE_PREFIX}-mpv-0.36.0-6-any.pkg.tar.zst
+          curl -LO https://github.com/xfangfang/wiliwili/releases/download/v0.1.0/${MINGW_PACKAGE_PREFIX}-mpv-0.39.0-4-any.pkg.tar.zst
           pacman -U --noconfirm *.pkg.tar.zst
 
           curl -LO https://github.com/rainers/cv2pdb/releases/download/v0.52/cv2pdb-0.52.zip
@@ -298,7 +293,7 @@ jobs:
 
       - name: Build Nro
         run: |
-          docker run --rm -v $(pwd):/data devkitpro/devkita64:20240224 bash -c "/data/scripts/build_switch${{ matrix.shuffix }}.sh"
+          docker run --rm -v $(pwd):/data devkitpro/devkita64:20241022 bash -c "/data/scripts/build_switch${{ matrix.shuffix }}.sh"
 
       - name: Upload dist
         uses: actions/upload-artifact@v4
@@ -324,8 +319,7 @@ jobs:
                 -DCMAKE_BUILD_TYPE=Release \
                 -DMPV_NO_FB=ON \
                 -DBRLS_UNITY_BUILD=${{ github.event.inputs.disable_unity_build == 'true' && 'OFF' || 'ON' }} \
-                -DCMAKE_UNITY_BUILD_BATCH_SIZE=16 \
-                -DUSE_SYSTEM_CPR=ON && \
+                -DCMAKE_UNITY_BUILD_BATCH_SIZE=16 && \
                 make -C cmake-build-ps4 -j$(nproc)"
 
       - name: Upload dist
@@ -342,10 +336,14 @@ jobs:
 
   build-macos:
     needs: [ version ]
-    runs-on: macos-12
+    runs-on: macos-14
     strategy:
       matrix:
-        arch: [ IntelChip, AppleSilicon, Universal ]
+        include:
+          - { arch: IntelChip, name: IntelChip }
+          - { arch: IntelChip_Old, name: IntelChip_10.11 }
+          - { arch: AppleSilicon, name: AppleSilicon }
+          - { arch: Universal, name: Universal }
       # Don't fail the whole workflow if one architecture fails
       fail-fast: false
     steps:
@@ -386,15 +384,14 @@ jobs:
             -DMAC_${{ matrix.arch }}=ON \
             -DMAC_DOWNLOAD_DYLIB=ON \
             -DBRLS_UNITY_BUILD=${{ github.event.inputs.disable_unity_build == 'true' && 'OFF' || 'ON' }} \
-            -DCMAKE_UNITY_BUILD_BATCH_SIZE=16 \
-            -DCURL_USE_LIBPSL=OFF
+            -DCMAKE_UNITY_BUILD_BATCH_SIZE=16
           make -C build wiliwili.app -j$(sysctl -n hw.ncpu)
 
       - name: Name
         if: matrix.arch != 'Universal' || ( matrix.arch == 'Universal' && github.event.inputs.universal_macos == 'true')
         id: name
         run: |
-          echo "DMG=${{ needs.version.outputs.DIST_DMG_PREFIX }}-${{ matrix.arch }}-${{ needs.version.outputs.version }}"  >> $GITHUB_OUTPUT
+          echo "DMG=${{ needs.version.outputs.DIST_DMG_PREFIX }}-${{ matrix.name }}-${{ needs.version.outputs.version }}"  >> $GITHUB_OUTPUT
 
       - name: Bundle
         if: matrix.arch != 'Universal' || ( matrix.arch == 'Universal' && github.event.inputs.universal_macos == 'true')
@@ -420,7 +417,7 @@ jobs:
     needs: [ version ]
     runs-on: ubuntu-latest
     container:
-      image: bilelmoussaoui/flatpak-github-actions:freedesktop-22.08
+      image: bilelmoussaoui/flatpak-github-actions:freedesktop-24.08
       options: --privileged
     strategy:
       matrix:
@@ -478,7 +475,7 @@ jobs:
         with:
           platforms: arm64
 
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6.3
+      - uses: xfangfang/flatpak-github-actions/flatpak-builder@master
         if: matrix.arch == 'x86_64' || ( matrix.arch == 'aarch64' && github.event.inputs.arm_flatpak == 'true')
         with:
           bundle: ${{ steps.dep.outputs.FLATPAK_NAME }}
@@ -486,6 +483,14 @@ jobs:
           cache-key: flatpak-builder-${{ matrix.driver }}-${{ hashFiles('.flatpak-manifest.yml') }}
           verbose: true
           arch: ${{ matrix.arch }}
+          upload-artifact: false
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.arch == 'x86_64' || ( matrix.arch == 'aarch64' && github.event.inputs.arm_flatpak == 'true')
+        with:
+          name: wiliwili-Linux-${{ needs.version.outputs.version }}-${{ matrix.arch }}
+          path: ${{ steps.dep.outputs.FLATPAK_NAME }}
+          if-no-files-found: error
 
   build-vita:
     needs: [ version ]
@@ -606,6 +611,7 @@ jobs:
             -DUSE_SYSTEM_CURL=ON \
             -DUSE_SYSTEM_SDL2=ON \
             -DMPV_NO_FB=ON \
+            -DSIMPLE_HIGHLIGHT=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DBRLS_UNITY_BUILD=${{ github.event.inputs.disable_unity_build == 'true' && 'OFF' || 'ON' }} \
             -DCMAKE_UNITY_BUILD_BATCH_SIZE=16 \

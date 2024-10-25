@@ -6,14 +6,12 @@
 #include <borealis/views/dialog.hpp>
 #include <cpr/cpr.h>
 
-#if defined(__WINRT__)
-#elif defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
-#include <clip/clip.h>
-#endif
 
 #include "fragment/share_dialog.hpp"
 #include "view/qr_image.hpp"
 #include "view/button_close.hpp"
+
+using namespace brls::literals;
 
 ShareBox::ShareBox() {
     this->inflateFromXMLRes("xml/fragment/share_box.xml");
@@ -26,6 +24,7 @@ ShareBox::ShareBox() {
 #if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
     this->registerClickAction([this](...) {
         if (this->action == "clipboard") {
+
 #if defined(__WINRT__)
             //TODO use winrt Clipboard
 #else
@@ -86,8 +85,6 @@ void ShareDialog::open(const std::string& link, const std::string& title, const 
                     "url={}&type=3&count=1&appkey=2841902482&title={}&pic={}&language=zh_cn",
                     cpr::util::urlEncode(link), cpr::util::urlEncode(title + "#哔哩哔哩动画#"), cpr::util::urlEncode(pic)));
 
-    this->boxHint->hide([]() {}, false, 0);
-    this->boxHint->setVisibility(brls::Visibility::VISIBLE);
 
     this->dynamic->setLink(link);
     this->dynamic->getEvent()->subscribe([this]() { this->showHint(); });
@@ -101,5 +98,6 @@ void ShareDialog::open(const std::string& link, const std::string& title, const 
 ShareDialog::~ShareDialog() { brls::Logger::debug("Fragment ShareDialog: delete"); }
 
 void ShareDialog::showHint() {
-    this->boxHint->show([this]() { brls::delay(500, [this]() { this->boxHint->hide([]() {}); }); });
+
+    brls::Application::notify("wiliwili/player/clipboard"_i18n);
 }
