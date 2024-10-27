@@ -12,6 +12,33 @@
 #include <borealis/core/geometry.hpp>
 #include <borealis/core/singleton.hpp>
 #include <borealis/core/logger.hpp>
+
+#ifdef __PLAYER_WINRT__
+
+#include "utils/event_helper.hpp"
+typedef struct mpv_node {
+    union {
+        char* string;   /** valid if format==MPV_FORMAT_STRING */
+        int flag;       /** valid if format==MPV_FORMAT_FLAG   */
+        int64_t int64;  /** valid if format==MPV_FORMAT_INT64  */
+        double double_; /** valid if format==MPV_FORMAT_DOUBLE */
+    } u;
+} mpv_node;
+
+//mpv_error_code
+#define MPV_ERROR_UNKNOWN_FORMAT 1
+#define MPV_ERROR_LOADING_FAILED 2
+
+#include <winrt/Windows.Media.Playback.h>
+#include <winrt/Windows.Media.Core.h>
+#include "player/HttpRandomAccessStream.h"
+
+static inline std::string mpvErrorString(int status) {
+    return std::format("error :{}", status);
+}
+
+#else
+
 #include <mpv/client.h>
 #include <mpv/render.h>
 #if defined(MPV_SW_RENDER)
@@ -128,7 +155,7 @@ extern mpvClientApiVersionFunc mpvClientApiVersion;
 #define mpvRenderContextFree mpv_render_context_free
 #define mpvClientApiVersion mpv_client_api_version
 #endif
-
+#endif /*__PLAYER_WINRT__*/
 class MPVCore : public brls::Singleton<MPVCore> {
 public:
     MPVCore();
@@ -181,6 +208,14 @@ public:
      * @param extra 额外的参数，定义同上
      */
     void setBackupUrl(const std::string &url, const std::string &extra = "");
+
+//winrt mediaplayer原生支持dash播放,以下是满足播放要求的参数
+#ifdef __PLAYER_WINRT__
+    void setDashUrl(int start, int end,
+        std::string videoUrl, std::string videoIndexRange, std::string videoInitRange,
+        std::string audioUrl, std::string audioIndexRange, std::string audioInitRange
+    );
+#endif __PLAYER_WINRT__
 
     void setVolume(int64_t value);
     void setVolume(const std::string &value);
@@ -273,9 +308,11 @@ public:
      */
     void draw(brls::Rect rect, float alpha = 1.0);
 
-    mpv_render_context *getContext();
+#ifndef __PLAYER_WINRT__
+    mpv_render_context* getContext();
 
-    mpv_handle *getHandle();
+    mpv_handle* getHandle();
+#endif
 
     /**
      * 播放器内部事件
@@ -301,7 +338,7 @@ public:
                    const std::vector<std::vector<std::string>> &settings, bool reset = true);
 
     void clearShader(bool showHint = true);
-
+#ifndef __PLAYER_WINRT__
     /// Send command to mpv
     template <typename... Args>
     void command_async(Args &&...args) {
@@ -312,7 +349,14 @@ public:
         std::vector<std::string> commands = {fmt::format("{}", std::forward<Args>(args))...};
         _command_async(commands);
     }
-
+#else
+    /// Send command to mpv
+    template <typename... Args>
+    void command_async(Args &&...args) {
+        std::vector<std::string> commands = {
+            fmt::format("{}", std::forward<Args>(args))... };
+    }
+#endif
     void _command_async(const std::vector<std::string>& commands);
 
     // core states
@@ -390,6 +434,38 @@ public:
     inline static double VIDEO_GAMMA      = 0;
 
 private:
+#ifdef __PLAYER_WINRT__
+    winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DSurface direct3dSurface{ nullptr };
+    winrt::Windows::Web::Http::HttpClient httpClient{ nullptr };
+    winrt::Windows::Media::Playback::MediaPlayer mediaPlayer{ nullptr };
+    int sourceType;//1 mp4,2 dash,3 m3u8
+
+    void PlayerVolumeChanged(const winrt::Windows::Media::Playback::MediaPlayer& player, const winrt::Windows::Foundation::IInspectable& value);
+
+    void PlaybackStateChanged(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
+
+    void PositionChanged(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
+
+    void BufferingStarted(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
+
+    void BufferingEnded(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
+
+    void MediaEnded(winrt::Windows::Media::Playback::MediaPlayer, winrt::Windows::Foundation::IInspectable const& value);
+
+    void OnVideoFrameAvailable(winrt::Windows::Media::Playback::MediaPlayer sender, winrt::Windows::Foundation::IInspectable arg);
+
+    int lastFrameWidth = 0;
+    int lastFrameHeight = 0;
+
+    int nvg_image = 0;
+
+    winrt::com_ptr<HttpRandomAccessStream> videoSource{ nullptr };
+
+    winrt::Windows::Foundation::Uri lastVideoUri{ nullptr };
+    winrt::Windows::Foundation::Uri lastAudioUri{ nullptr };
+    brls::Rect rect = { 0, 0, 1920, 1080 };
+#else
+
     mpv_handle *mpv                 = nullptr;
     mpv_render_context *mpv_context = nullptr;
     brls::Rect rect                 = {0, 0, 1920, 1080};
@@ -450,6 +526,7 @@ private:
     HMEMORYMODULE dll;
 #endif
 
+#endif /*__PLAYER_WINRT__*/
     // MPV 内部事件，传递内容为: 事件类型
     MPVEvent mpvCoreEvent;
 

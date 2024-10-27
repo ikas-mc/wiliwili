@@ -964,7 +964,10 @@ std::string ProgramConfig::getConfigDir() {
     if (config.empty()) config = std::string(getenv("HOME")) + "/.config";
     return config + "/wiliwili";
 #endif
-#ifdef _WIN32
+#ifdef __WINRT__
+    std::string currentPath = std::string(getenv("LOCALAPPDATA"));
+    return currentPath + "\\config\\wiliwili";
+#elif _WIN32
     WCHAR wpath[MAX_PATH];
     std::vector<char> lpath(MAX_PATH);
     SHGetSpecialFolderPathW(0, wpath, CSIDL_LOCAL_APPDATA, false);

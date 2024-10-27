@@ -1,7 +1,7 @@
 //
 // Created by fang on 2022/8/12.
 //
-
+#ifndef __PLAYER_WINRT__
 #include <cstdlib>
 #include <clocale>
 #include <pystring.h>
@@ -1303,3 +1303,4 @@ void MPVCore::_command_async(const std::vector<std::string> &commands) {
     res.emplace_back(nullptr);
     mpvCommandAsync(mpv, 0, res.data());
 }
+#endif

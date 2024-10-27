@@ -27,8 +27,15 @@ void LiveDataRequest::requestData(int roomid) {
             // codec: avc / hevc / av1
             bilibili::LiveStream stream;
             for (auto& i : liveRoomPlayInfo.playurl_info.playurl.stream) {
+#ifdef __PLAYER_WINRT__
+                if (i.protocol_name == "http_hls") {
+                    stream = i;
+                    break;
+                }
+#else
                 stream = i;
                 break;
+#endif //__PLAYER_WINRT__
             }
             bilibili::LiveStreamFormat format;
             for (auto& i : stream.format) {

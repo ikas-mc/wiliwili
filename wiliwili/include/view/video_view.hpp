@@ -49,6 +49,13 @@ public:
 
     ~VideoView() override;
 
+#ifdef __PLAYER_WINRT__
+    void setDashUrl(int start, int end,
+        std::string videoUrl, std::string videoIndexRange, std::string videoInitRange,
+        std::string audioUrl, std::string audioIndexRange, std::string audioInitRange
+    );
+#endif // __PLAYER_WINRT__
+
     /// Video control
     void setUrl(const std::string& url, int start = 0, int end = -1, const std::string& audio = "");
 
