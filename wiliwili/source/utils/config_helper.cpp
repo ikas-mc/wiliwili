@@ -52,6 +52,7 @@ extern in_addr_t secondary_dns;
 #endif
 
 #ifdef __WINRT__
+#include <winrt/windows.storage.h>
 #include <winrt/windows.applicationmodel.core.h>
 #endif
 
@@ -943,7 +944,8 @@ std::string ProgramConfig::getConfigDir() {
 #ifdef _DEBUG
     char currentPathBuffer[PATH_MAX];
 #ifdef __WINRT__
-    std::string currentPath =std::string(getenv("LOCALAPPDATA"));
+    std::string currentPath =winrt::to_string(winrt::Windows::Storage::AppDataPaths::GetDefault().LocalAppData());
+    //std::string currentPath =std::string(getenv("LOCALAPPDATA"));
 #else
     std::string currentPath = getcwd(currentPathBuffer, sizeof(currentPathBuffer));
 #endif /* __WINRT__ */
@@ -965,7 +967,7 @@ std::string ProgramConfig::getConfigDir() {
     return config + "/wiliwili";
 #endif
 #ifdef __WINRT__
-    std::string currentPath = std::string(getenv("LOCALAPPDATA"));
+    std::string currentPath =winrt::to_string(winrt::Windows::Storage::AppDataPaths::GetDefault().LocalAppData());
     return currentPath + "\\xfangfang\\wiliwili";
 #elif _WIN32
     WCHAR wpath[MAX_PATH];
