@@ -316,12 +316,13 @@ void BasePlayerActivity::setCommonData() {
                     }
 
                     // 播放到一半没网时也会触发EOF，这里简单判断一下结束播放时的播放条位置是否在片尾或视频结尾附近
-                    if (fabs(duration - progress) > 5 && !(clipEnd > 0 && clipEnd - progress < 5)) {
+                    if ((duration - progress > 5 || progress - duration > 5) && !(clipEnd > 0 && clipEnd - progress < 5)) {
                         brls::Logger::error("EOF: video: {} duration: {} clipEnd: {}", progress, duration, clipEnd);
                         return;
                     }
                     if (PLAYER_STRATEGY == PlayerStrategy::LOOP) {
                         MPVCore::instance().seek(0);
+                        MPVCore::instance().resume();
                         return;
                     }
                     auto stack    = brls::Application::getActivitiesStack();
@@ -429,6 +430,11 @@ void BasePlayerActivity::setVideoQuality() {
         "wiliwili/player/quality"_i18n,
         [this](int selected) {
             int code                           = this->videoUrlResult.accept_quality[selected];
+#ifdef __PSV__
+            if (code > 64) {
+                code = 64;
+            }
+#endif
             BasePlayerActivity::defaultQuality = code;
             ProgramConfig::instance().setSettingItem(SettingItem::VIDEO_QUALITY, code);
 
@@ -540,7 +546,15 @@ void BasePlayerActivity::onVideoPlayUrl(const bilibili::VideoUrlResult& result) 
 
         // 找到当前可用的清晰度
         for (const auto& i : result.dash.video) {
-            if (result.quality >= i.id) {
+            int desiredQuality = result.quality;
+            // 若设置了过高的清晰度, 自动切换到合适的清晰度, 默认为 128 (即无限制)
+            if (i.height > i.width) {
+                desiredQuality = std::min(desiredQuality, portraitQualityMax);
+            } else {
+                desiredQuality = std::min(desiredQuality, landscapeQualityMax);
+            }
+
+            if (desiredQuality >= i.id) {
                 videoUrlResult.quality = i.id;
                 break;
             }

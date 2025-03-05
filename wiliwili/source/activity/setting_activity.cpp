@@ -270,6 +270,8 @@ void SettingActivity::onContentAvailable() {
 #endif
 #elif defined(BOREALIS_USE_D3D11)
                                + " (D3D11)"
+#elif defined(BOREALIS_USE_GXM)
+                               + " (GXM)"
 #endif
     );
     labelOpensource->setText(OPENSOURCE);
@@ -315,12 +317,41 @@ void SettingActivity::onContentAvailable() {
 
     /// Limited FPS
     auto fpsOption = conf.getOptionData(SettingItem::LIMITED_FPS);
+    int swapInterval = conf.getSettingItem(SettingItem::SWAP_INTERVAL, 1);
+    int limitedFPS = conf.getSettingItem(SettingItem::LIMITED_FPS, 0);
+    int fpsIndex = conf.getIntOptionIndex(SettingItem::LIMITED_FPS);
+    if ((limitedFPS > 0 && fpsIndex == 0) || (swapInterval == 0 && fpsIndex == 0) ||
+        swapInterval < 0 || swapInterval > 4) {
+        // 用户自定义配置
+        selectorFPS->setVisibility(brls::Visibility::GONE);
+    } else if (limitedFPS == 0) {
+        // 垂直同步
+        fpsIndex = swapInterval - 1;
+    } else {
+        // 关闭垂直同步，限制帧数
+        fpsIndex += 3;
+    }
     selectorFPS->init("wiliwili/setting/app/others/limited_fps"_i18n,
-                      {"wiliwili/setting/app/others/limited_fps_vsync"_i18n, "30", "60", "90", "120"},
-                      (size_t)conf.getIntOptionIndex(SettingItem::LIMITED_FPS), [fpsOption](int data) {
-                          int fps = fpsOption.rawOptionList[data];
-                          brls::Application::setLimitedFPS(fps);
-                          ProgramConfig::instance().setSettingItem(SettingItem::LIMITED_FPS, fps);
+                      {"wiliwili/setting/app/others/limited_fps_vsync"_i18n,
+                       std::string{"1/2 "} + "wiliwili/setting/app/others/limited_fps_vsync"_i18n,
+                       std::string{"1/3 "} + "wiliwili/setting/app/others/limited_fps_vsync"_i18n,
+                       std::string{"1/4 "} + "wiliwili/setting/app/others/limited_fps_vsync"_i18n,
+                       "30", "60", "90", "120"},
+                      fpsIndex, [fpsOption](int data) {
+                          if (data <= 3) {
+                              // 垂直同步
+                              ProgramConfig::instance().setSettingItem(SettingItem::LIMITED_FPS, 0);
+                              ProgramConfig::instance().setSettingItem(SettingItem::SWAP_INTERVAL, data + 1);
+                              brls::Application::setLimitedFPS(0);
+                              brls::Application::setSwapInterval(data + 1);
+                          } else {
+                              // 限制帧数
+                              int fps = fpsOption.rawOptionList[data - 3];
+                              ProgramConfig::instance().setSettingItem(SettingItem::LIMITED_FPS, fps);
+                              ProgramConfig::instance().setSettingItem(SettingItem::SWAP_INTERVAL, 0);
+                              brls::Application::setLimitedFPS(fps);
+                              brls::Application::setSwapInterval(0);
+                          }
                           return true;
                       });
 
@@ -637,7 +668,7 @@ void SettingActivity::onContentAvailable() {
         "wiliwili/setting/app/network/proxy_hint"_i18n, "wiliwili/setting/app/network/proxy_hint"_i18n, 64);
 
 /// Hardware decode
-#if defined(PS4) || defined(__PSV__)
+#if defined(PS4) || defined(__PSV__) && defined(BOREALIS_USE_OPENGL)
     btnHWDEC->setVisibility(brls::Visibility::GONE);
 #else
     btnHWDEC->init("wiliwili/setting/app/playback/hwdec"_i18n, conf.getBoolOption(SettingItem::PLAYER_HWDEC),

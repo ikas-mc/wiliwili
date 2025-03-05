@@ -2,6 +2,7 @@
 // Created by fang on 2023/1/6.
 //
 
+#include <cmath>
 #include <utility>
 #include <borealis/views/applet_frame.hpp>
 #include <borealis/core/touch/tap_gesture.hpp>
@@ -117,7 +118,10 @@ public:
         view->likeClickEvent.subscribe([this, item, index](size_t action) {
             auto& itemData  = dataList[index];
             // 点赞/取消点赞 或 点踩/取消点踩
-            bool isLike = action == 1 || (action == 0 & itemData.action == 1);
+
+            // 是点赞相关的操作，当前状态为点赞，或者取消点赞
+            bool isLike = action == 1 || (action == 0 && itemData.action == 1);
+
             if (action == 1) {
                 // 最新状态变为点赞，点赞数 +1
                 itemData.like++;
@@ -299,7 +303,7 @@ void PlayerSingleComment::setCommentData(const bilibili::VideoCommentResult& res
 }
 
 void PlayerSingleComment::showStartAnimation(float y) {
-    if (isnan(y)) return;
+    if (std::isnan(y)) return;
     commentOriginalPosition = y;
 
     brls::Application::blockInputs();
@@ -445,18 +449,8 @@ PlayerCommentAction::PlayerCommentAction(CommentUiType type) {
     });
     this->svgGallery->registerClickAction([this](...) {
         std::vector<std::string> data;
-#ifdef __PSV__
-        const std::string note_raw_ext = "@300h.jpg";
-#else
-        const std::string note_raw_ext = "@!web-comment-note.jpg";
-#endif
         for (auto& i : this->comment->getData().content.pictures) {
-            std::string raw_ext = ImageHelper::note_raw_ext;
-            if (i.img_src.size() > 4 && i.img_src.substr(i.img_src.size() - 4, 4) == ".gif") {
-                // gif 图片暂时按照 jpg 来解析
-                raw_ext = note_raw_ext;
-            }
-            data.emplace_back(i.img_src + raw_ext);
+            data.emplace_back(ImageHelper::parseGifImageUrl(i.img_src, ImageHelper::note_raw_ext));
         }
         Intent::openGallery(data);
         return true;

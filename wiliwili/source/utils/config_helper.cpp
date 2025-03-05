@@ -12,6 +12,7 @@
 #endif
 #endif
 
+#include <cmath>
 #include <borealis/core/application.hpp>
 #include <borealis/core/cache_helper.hpp>
 #include <borealis/core/touch/pan_gesture.hpp>
@@ -47,6 +48,23 @@ extern in_addr_t secondary_dns;
 }
 #endif
 
+#ifdef __PSV__
+#include <mbedtls/platform.h>
+#include <psp2/kernel/cpu.h>
+#include <psp2/kernel/threadmgr/thread.h>
+#include <psp2/vshbridge.h>
+#include <psp2/gxm.h>
+#include <psp2/kernel/sysmem.h>
+extern "C"
+{
+unsigned int _newlib_heap_size_user      = 220 * 1024 * 1024;
+unsigned int _pthread_stack_default_user = 2 * 1024 * 1024;
+#ifndef BOREALIS_USE_GXM
+unsigned int sceLibcHeapSize             = 24 * 1024 * 1024;
+#endif
+}
+#endif
+
 #ifdef _WIN32
 #include <winsock2.h>
 #endif
@@ -58,6 +76,43 @@ extern in_addr_t secondary_dns;
 
 #ifndef PATH_MAX
 #define PATH_MAX 256
+#endif
+
+#ifdef __PSV__
+#ifdef BOREALIS_USE_GXM
+// 720P
+#define WILI_VIDEO_QUALITY_DEFAULT 64
+#define WILI_VIDEO_QUALITY_LANDSCAPE_MAX 64
+// 480P
+#define WILI_VIDEO_QUALITY_PORTRAIT_MAX 32
+#else
+#define WILI_VIDEO_QUALITY_DEFAULT 32
+#define WILI_VIDEO_QUALITY_LANDSCAPE_MAX 32
+#define WILI_VIDEO_QUALITY_PORTRAIT_MAX 32
+#endif
+#define WILI_WINDOW_WIDTH_DEFAULT 960
+#define WILI_WINDOW_HEIGHT_DEFAULT 544
+// 默认 UI 缩放 (0 为 960x544)
+#define WILI_UI_SCALE_DEFAULT 0
+// 默认音频质量 (2 为 低, PSV 的喇叭质量差，音质高低无区别，设置成低可以减少流量)
+#define WILI_AUDIO_QUALITY_DEFAULT 2
+#define WILI_DNS_CACHE_TIMEOUT 3600000
+#else
+// 默认清晰度 (116 为 1080P@60)
+#define WILI_VIDEO_QUALITY_DEFAULT 116
+// 横屏视频最高清晰度 (127 为 8K, 128 即无限制)
+#define WILI_VIDEO_QUALITY_LANDSCAPE_MAX 128
+// 竖屏视频最高清晰度
+#define WILI_VIDEO_QUALITY_PORTRAIT_MAX 128
+// 默认窗口大小 (不配置 ui 缩放时的窗口大小)
+#define WILI_WINDOW_WIDTH_DEFAULT 1280
+#define WILI_WINDOW_HEIGHT_DEFAULT 720
+// 默认 UI 缩放 (1 为 1280x720)
+#define WILI_UI_SCALE_DEFAULT 1
+// 默认音频质量 (0 为 高)
+#define WILI_AUDIO_QUALITY_DEFAULT 0
+// DNS 缓存时间
+#define WILI_DNS_CACHE_TIMEOUT 60000
 #endif
 
 using namespace brls::literals;
@@ -87,15 +142,7 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
 #endif
     {SettingItem::APP_THEME, {"app_theme", {"auto", "light", "dark"}, {}, 0}},
     {SettingItem::APP_RESOURCES, {"app_resources", {}, {}, 0}},
-    {SettingItem::APP_UI_SCALE,
-     {"app_ui_scale",
-      {"544p", "720p", "900p", "1080p"},
-      {},
-#ifdef __PSV__
-      0}},
-#else
-      1}},
-#endif
+    {SettingItem::APP_UI_SCALE, {"app_ui_scale", {"544p", "720p", "900p", "1080p"}, {}, WILI_UI_SCALE_DEFAULT}},
     {SettingItem::KEYMAP, {"keymap", {"xbox", "ps", "keyboard"}, {}, 0}},
     {SettingItem::HOME_WINDOW_STATE, {"home_window_state", {}, {}, 0}},
     {SettingItem::DLNA_IP, {"dlna_ip", {}, {}, 0}},
@@ -176,6 +223,8 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
     {SettingItem::PLAYER_VOLUME, {"player_volume", {}, {}, 0}},
     {SettingItem::TEXTURE_CACHE_NUM, {"texture_cache_num", {}, {}, 0}},
     {SettingItem::VIDEO_QUALITY, {"video_quality", {}, {}, 116}},
+    {SettingItem::VIDEO_QUALITY_LANDSCAPE_MAX, {"video_quality_landscape_max", {}, {}, 128}},
+    {SettingItem::VIDEO_QUALITY_PORTRAIT_MAX, {"video_quality_portrait_max", {}, {}, 128}},
     {SettingItem::IMAGE_REQUEST_THREADS,
      {"image_request_threads",
 #if defined(__SWITCH__) || defined(__PSV__)
@@ -190,14 +239,7 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
     {SettingItem::VIDEO_FORMAT, {"file_format", {"Dash (AVC/HEVC/AV1)", "FLV/MP4"}, {4048, 0}, 0}},
     {SettingItem::VIDEO_CODEC, {"video_codec", {"AVC/H.264", "HEVC/H.265", "AV1"}, {7, 12, 13}, 0}},
     {SettingItem::AUDIO_QUALITY,
-     {"audio_quality",
-      {"High", "Medium", "Low"},
-      {30280, 30232, 30216},
-#if defined(__PSV__)
-      2}},
-#else
-      0}},
-#endif
+     {"audio_quality", {"High", "Medium", "Low"}, {30280, 30232, 30216}, WILI_AUDIO_QUALITY_DEFAULT}},
     {SettingItem::DANMAKU_FILTER_LEVEL,
      {"danmaku_filter_level", {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, 0}},
     {SettingItem::DANMAKU_STYLE_AREA, {"danmaku_style_area", {"1/4", "1/2", "3/4", "1"}, {25, 50, 75, 100}, 3}},
@@ -218,6 +260,7 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
     {SettingItem::DANMAKU_RENDER_QUALITY,
      {"danmaku_render_quality", {"100%", "95%", "90%", "80%", "70%", "60%", "50%"}, {100, 95, 90, 80, 70, 60, 50}, 0}},
     {SettingItem::LIMITED_FPS, {"limited_fps", {"0", "30", "60", "90", "120"}, {0, 30, 60, 90, 120}, 0}},
+    {SettingItem::SWAP_INTERVAL, {"swap_interval", {"0", "1", "2", "3", "4"}, {0, 1, 2, 3, 4}, 1}},
     {SettingItem::DEACTIVATED_TIME, {"deactivated_time", {}, {}, 0}},
     {SettingItem::DEACTIVATED_FPS, {"deactivated_fps", {}, {}, 0}},
     {SettingItem::DLNA_PORT, {"dlna_port", {}, {}, 0}},
@@ -227,12 +270,16 @@ std::unordered_map<SettingItem, ProgramOption> ProgramConfig::SETTING_MAP = {
     {SettingItem::PLAYER_SATURATION, {"player_saturation", {}, {}, 0}},
     {SettingItem::PLAYER_HUE, {"player_hue", {}, {}, 0}},
     {SettingItem::PLAYER_GAMMA, {"player_gamma", {}, {}, 0}},
+    {SettingItem::PLAYER_OSD_HIDE, {"player_osd_hide", {}, {}, 0}},
     {SettingItem::MINIMUM_WINDOW_WIDTH, {"minimum_window_width", {"480"}, {480}, 0}},
     {SettingItem::MINIMUM_WINDOW_HEIGHT, {"minimum_window_height", {"270"}, {270}, 0}},
     {SettingItem::ON_TOP_WINDOW_WIDTH, {"on_top_window_width", {"480"}, {480}, 0}},
     {SettingItem::ON_TOP_WINDOW_HEIGHT, {"on_top_window_height", {"270"}, {270}, 0}},
     {SettingItem::ON_TOP_MODE, {"on_top_mode", {"off", "always", "auto"}, {0, 1, 2}, 0}},
     {SettingItem::SCROLL_SPEED, {"scroll_speed", {}, {}, 0}},
+    {SettingItem::HTTP_TIMEOUT, {"http_timeout", {}, {}, 0}},
+    {SettingItem::HTTP_CONNECTION_TIMEOUT, {"http_connection_timeout", {}, {}, 0}},
+    {SettingItem::HTTP_DNS_CACHE_TIMEOUT, {"http_dns_cache_timeout", {}, {}, 0}},
 
     /// Custom
     {SettingItem::UP_FILTER, {"up_filter", {}, {}, 0}},
@@ -382,7 +429,8 @@ void ProgramConfig::loadHomeWindowState() {
 }
 
 void ProgramConfig::saveHomeWindowState() {
-    if (isnan(VideoContext::posX) || isnan(VideoContext::posY)) return;
+    if (std::isnan(VideoContext::posX) || std::isnan(VideoContext::posY)) return;
+    if (VideoContext::FULLSCREEN) return;
     auto videoContext = brls::Application::getPlatform()->getVideoContext();
 
     uint32_t width  = VideoContext::sizeW;
@@ -466,22 +514,19 @@ void ProgramConfig::load() {
         brls::Application::ORIGINAL_WINDOW_WIDTH  = 1920;
         brls::Application::ORIGINAL_WINDOW_HEIGHT = 1080;
     } else {
-#ifdef __PSV__
-        brls::Application::ORIGINAL_WINDOW_WIDTH  = 960;
-        brls::Application::ORIGINAL_WINDOW_HEIGHT = 544;
-#else
-        brls::Application::ORIGINAL_WINDOW_WIDTH  = 1280;
-        brls::Application::ORIGINAL_WINDOW_HEIGHT = 720;
-#endif
+        brls::Application::ORIGINAL_WINDOW_WIDTH  = WILI_WINDOW_WIDTH_DEFAULT;
+        brls::Application::ORIGINAL_WINDOW_HEIGHT = WILI_WINDOW_HEIGHT_DEFAULT;
     }
+
+    // 初始化视频清晰度最高限制
+    VideoDetail::landscapeQualityMax = getSettingItem(SettingItem::VIDEO_QUALITY_LANDSCAPE_MAX,
+                                                      WILI_VIDEO_QUALITY_LANDSCAPE_MAX);
+    VideoDetail::portraitQualityMax  = getSettingItem(SettingItem::VIDEO_QUALITY_PORTRAIT_MAX,
+                                                      WILI_VIDEO_QUALITY_PORTRAIT_MAX);
 
     // 初始化视频清晰度
     VideoDetail::defaultQuality = getSettingItem(SettingItem::VIDEO_QUALITY,
-#ifdef __PSV__
-                                                 32);
-#else
-                                                 116);
-#endif
+                                                 WILI_VIDEO_QUALITY_DEFAULT);
     if (!hasLoginInfo()) {
         // 用户未登录时跟随官方将默认清晰度设置到 360P
         VideoDetail::defaultQuality = 16;
@@ -560,7 +605,7 @@ void ProgramConfig::load() {
     VideoView::HIGHLIGHT_PROGRESS_BAR = getBoolOption(SettingItem::PLAYER_HIGHLIGHT_BAR);
 
     // 初始化是否使用硬件加速
-#ifdef __PSV__
+#if defined(__PSV__) && defined(BOREALIS_USE_OPENGL)
     MPVCore::HARDWARE_DEC = true;
 #else
     MPVCore::HARDWARE_DEC = getBoolOption(SettingItem::PLAYER_HWDEC);
@@ -571,6 +616,9 @@ void ProgramConfig::load() {
 
     // 播放结束时自动退出全屏
     VideoView::EXIT_FULLSCREEN_ON_END = getBoolOption(SettingItem::PLAYER_EXIT_FULLSCREEN_ON_END);
+
+    // 初始化播放器 OSD 自动隐藏时间
+    VideoView::OSD_SHOW_TIME = getSettingItem(SettingItem::PLAYER_OSD_HIDE, 5000);
 
     // 初始化内存缓存大小
     MPVCore::INMEMORY_CACHE = getIntOption(SettingItem::PLAYER_INMEMORY_CACHE);
@@ -610,7 +658,9 @@ void ProgramConfig::load() {
 #endif
 
     // 初始化FPS限制
-    brls::Application::setLimitedFPS(getSettingItem(SettingItem::LIMITED_FPS, 0));
+    int limitedFPS = getSettingItem(SettingItem::LIMITED_FPS, 0);
+    brls::Application::setLimitedFPS(limitedFPS);
+    VideoContext::swapInterval = limitedFPS == 0 ? getSettingItem(SettingItem::SWAP_INTERVAL, 1) : 0;
 
     // 初始化进入闲置状态需要的时间 (ms);
     int deactivatedTime = getSettingItem(SettingItem::DEACTIVATED_TIME, 0);
@@ -825,6 +875,83 @@ void ProgramConfig::checkOnTop() {
     }
 }
 
+#ifdef __PSV__
+#define MEM_POOL_SIZE (26 * 1024 * 1024)
+#define MEM_POOL_TYPE SCE_KERNEL_MEMBLOCK_TYPE_USER_MAIN_PHYCONT_RW
+static void *s_mspace = nullptr;
+static SceUID mempool_id = 0;
+static void *mempool_addr = nullptr;
+static size_t mempool_size = MEM_POOL_SIZE;
+
+int __attribute__((optimize("no-optimize-sibling-calls"))) malloc_finalize() {
+    if (s_mspace)
+        sceClibMspaceDestroy(s_mspace);
+    if (mempool_addr)
+        sceGxmUnmapMemory(mempool_addr);
+    if (mempool_id)
+        sceKernelFreeMemBlock(mempool_id);
+    return 0;
+}
+
+int malloc_init() {
+    int res;
+    if (s_mspace)
+        return 0;
+    mempool_id = sceKernelAllocMemBlock("curl_mempool", MEM_POOL_TYPE, mempool_size, NULL);
+    sceKernelGetMemBlockBase(mempool_id, &mempool_addr);
+    if (!mempool_addr)
+        goto error;
+    res = sceGxmMapMemory(mempool_addr, mempool_size, SCE_GXM_MEMORY_ATTRIB_RW);
+    if (res != SCE_OK)
+        goto error;
+    s_mspace = sceClibMspaceCreate(mempool_addr, mempool_size);
+    if (!s_mspace)
+        goto error;
+
+    return 0;
+error:
+    malloc_finalize();
+    return 1;
+}
+
+void __attribute__((optimize("no-optimize-sibling-calls"))) *sce_malloc(size_t size) {
+    if (!s_mspace)
+        malloc_init();
+    return sceClibMspaceMalloc(s_mspace, size);
+}
+
+void __attribute__((optimize("no-optimize-sibling-calls"))) sce_free(void *ptr) {
+    if (!ptr || !s_mspace)
+        return;
+    sceClibMspaceFree(s_mspace, ptr);
+}
+
+void __attribute__((optimize("no-optimize-sibling-calls"))) *sce_calloc(size_t nelem, size_t size) {
+    if (!s_mspace)
+        malloc_init();
+    return sceClibMspaceCalloc(s_mspace, nelem, size);
+}
+
+void __attribute__((optimize("no-optimize-sibling-calls"))) *sce_realloc(void *ptr, size_t size) {
+    if (!s_mspace)
+        malloc_init();
+    return sceClibMspaceRealloc(s_mspace, ptr, size);
+}
+
+char __attribute__((optimize("no-optimize-sibling-calls"))) *sce_strdup(const char *str) {
+    size_t len;
+    char *newstr;
+    if(!str)
+        return (char *)nullptr;
+    len = strlen(str) + 1;
+    newstr = (char *)sce_malloc(len);
+    if(!newstr)
+        return (char *)nullptr;
+    sceClibMemcpy(newstr, str, len);
+    return newstr;
+}
+#endif
+
 void ProgramConfig::init() {
     brls::Logger::info("wiliwili {}", APPVersion::instance().git_tag);
     wiliwili::initCrashDump();
@@ -833,7 +960,13 @@ void ProgramConfig::init() {
     brls::Application::getWindowSizeChangedEvent()->subscribe([]() { ProgramConfig::instance().checkOnTop(); });
 
     // Set min_threads and max_threads of http thread pool
+#ifdef BOREALIS_USE_GXM
+    // TODO: 不确定为什么 gles 版无法使用 libheap, 当 gxm 稳定后会移除 gles 版本，所以暂时忽略
+    mbedtls_platform_set_calloc_free(sce_calloc, sce_free);
+    curl_global_init_mem(CURL_GLOBAL_DEFAULT, sce_malloc, sce_free, sce_realloc, sce_strdup, sce_calloc);
+#else
     curl_global_init(CURL_GLOBAL_DEFAULT);
+#endif
     cpr::async::startup(THREAD_POOL_MIN_THREAD_NUM, THREAD_POOL_MAX_THREAD_NUM, std::chrono::milliseconds(5000));
 
 #ifdef _WIN32
@@ -843,6 +976,14 @@ void ProgramConfig::init() {
 #endif
 #if defined(_MSC_VER)
 #elif defined(__PSV__)
+    int search_unk[2];
+    if(_vshKernelSearchModuleByName("CapUnlocker", search_unk) >= 0) {
+        brls::sync([]() {
+            brls::Application::notify("CapUnlocker found");
+        });
+        sceKernelChangeThreadPriority(SCE_KERNEL_THREAD_ID_SELF, 64);
+        sceKernelChangeThreadCpuAffinityMask(SCE_KERNEL_THREAD_ID_SELF, SCE_KERNEL_CPU_MASK_SYSTEM);
+    }
 #elif defined(PS4)
     if (sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_NET) < 0) brls::Logger::error("cannot load net module");
     primary_dns                     = inet_addr(primaryDNSStr.c_str());
@@ -902,15 +1043,14 @@ void ProgramConfig::init() {
             brls::Logger::info("======== write cookies to disk");
             ProgramConfig::instance().setCookie(newCookie);
             ProgramConfig::instance().setRefreshToken(token);
-            // 用户登录后，将默认清晰度设置为 1080P 60FPS
-            VideoDetail::defaultQuality = 116;
-        },
-#ifdef __PSV__
-        10000,
-#else
-        5000,
-#endif
-        httpProxy, httpsProxy, getBoolOption(SettingItem::TLS_VERIFY));
+            // 用户重新登录后，恢复默认清晰度设置
+            VideoDetail::defaultQuality = WILI_VIDEO_QUALITY_DEFAULT;
+        });
+    BILI::setProxy(httpProxy, httpsProxy);
+    BILI::setTlsVerify(getBoolOption(SettingItem::TLS_VERIFY));
+    BILI::setHttpTimeout(getSettingItem(SettingItem::HTTP_TIMEOUT, 5000));
+    BILI::setConnectionTimeout(getSettingItem(SettingItem::HTTP_CONNECTION_TIMEOUT, 0));
+    BILI::setDnsCacheTimeout(getSettingItem(SettingItem::HTTP_DNS_CACHE_TIMEOUT, WILI_DNS_CACHE_TIMEOUT));
 }
 
 std::string ProgramConfig::getHomePath() {

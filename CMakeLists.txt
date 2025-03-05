@@ -83,7 +83,7 @@ add_definitions(-DFONS_HASH_LUT_SIZE=4096)
 project(wiliwili)
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "5")
-set(VERSION_REVISION "0")
+set(VERSION_REVISION "1")
 if (NOT VERSION_BUILD)
     set(VERSION_BUILD "0")
 endif ()
@@ -91,7 +91,7 @@ set(PROJECT_AUTHOR "xfangfang")
 set(PACKAGE_NAME cn.xfangfang.wiliwili)
 set(VITA_TITLEID "WILIWILI0")
 set(PSN_TITLE_ID "WILI00000")
-set(VITA_VERSION "01.50")
+set(VITA_VERSION "01.51")
 set(PROJECT_ICON ${CMAKE_CURRENT_SOURCE_DIR}/resources/icon/icon.jpg)
 set(PROJECT_RESOURCES ${CMAKE_CURRENT_SOURCE_DIR}/resources)
 set(APP_VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_REVISION}")
@@ -253,24 +253,23 @@ elseif (PLATFORM_IOS)
             "wiliwili"
             "${APP_VERSION}")
 elseif (PLATFORM_PSV)
+    set(PSV_ASSETS_FILES ${CMAKE_SOURCE_DIR}/scripts/psv/sce_sys sce_sys)
+    if (NOT USE_LIBROMFS)
+        list(APPEND PSV_ASSETS_FILES ${CMAKE_SOURCE_DIR}/resources resources)
+    endif ()
+    if (NOT USE_GXM)
+        list(APPEND PSV_ASSETS_FILES ${CMAKE_SOURCE_DIR}/scripts/psv/module/ module)
+    endif ()
+    if (USE_VITA_SHARK)
+        list(APPEND PSV_ASSETS_FILES "${CMAKE_BINARY_DIR}/vendor/SceShaccCg" module)
+    endif ()
+    list(APPEND APP_PLATFORM_LIB SceVshBridge_stub)
     set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -d ATTRIBUTE2=12") # max heap size mode
-    # I don't know why, but only manually specifying the link libraries in this order will not cause the program to crash
-    set(APP_PLATFORM_LIB
-            stdc++;mpv;
-            avfilter;swscale;avformat;avcodec;swresample;avutil;
-            ass;harfbuzz;fribidi;freetype;bz2;png16;
-            webp;sharpyuv;
-            m;z;
-            SceCodecEngine_stub
-            SceVideodec_stub
-            SceAudiodec_stub)
     vita_create_self(${PROJECT_NAME}.self ${PROJECT_NAME} UNSAFE NOASLR)
     vita_create_vpk(${PROJECT_NAME}.vpk ${VITA_TITLEID} ${PROJECT_NAME}.self
             VERSION ${VITA_VERSION}
             NAME ${PROJECT_NAME}
-            FILE ${CMAKE_SOURCE_DIR}/resources resources
-            FILE ${CMAKE_SOURCE_DIR}/scripts/psv/sce_sys sce_sys
-            FILE ${CMAKE_SOURCE_DIR}/scripts/psv/module/ module
+            FILE ${PSV_ASSETS_FILES}
             )
 elseif (PLATFORM_PS4)
     add_self(${PROJECT_NAME})

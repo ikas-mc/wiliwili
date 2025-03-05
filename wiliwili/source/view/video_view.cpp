@@ -3,6 +3,7 @@
 //
 
 #include <limits>
+#include <cmath>
 
 #include <borealis/views/label.hpp>
 #include <borealis/views/progress_spinner.hpp>
@@ -619,6 +620,7 @@ void VideoView::requestSeeking(int seek, int delay) {
         is_seeking    = false;
         if (seek == 0) return;
         mpvCore->seekRelative(seek);
+        showOSD(true);
     } else {
         // 延迟触发跳转进度
         is_seeking = true;
@@ -630,6 +632,7 @@ void VideoView::requestSeeking(int seek, int delay) {
             is_seeking    = false;
             if (seek == 0) return;
             mpvCore->seekRelative(seek);
+            showOSD(true);
         });
     }
 }
@@ -644,9 +647,9 @@ VideoView::~VideoView() {
 void VideoView::draw(NVGcontext* vg, float x, float y, float width, float height, brls::Style style,
                      brls::FrameContext* ctx) {
     if (!mpvCore->isValid()) return;
-    float alpha    = this->getAlpha();
-    time_t current = wiliwili::unix_time();
-    bool drawOSD   = current < this->osdLastShowTime;
+    float alpha        = this->getAlpha();
+    brls::Time current = brls::getCPUTimeUsec();
+    bool drawOSD       = this->osd_state == OSDState::ALWAYS_ON || current < this->osdLastShowTime;
 
     // draw video
     mpvCore->draw(brls::Rect(x, y, width, height), alpha);
@@ -902,15 +905,11 @@ int64_t VideoView::getLastPlayedPosition() const { return lastPlayedPosition; }
 /// OSD
 void VideoView::showOSD(bool temp) {
     if (temp) {
-        this->osdLastShowTime = wiliwili::unix_time() + VideoView::OSD_SHOW_TIME;
+        this->osdLastShowTime = brls::getCPUTimeUsec() + VideoView::OSD_SHOW_TIME * 1000;
         this->osd_state       = OSDState::SHOWN;
     } else {
-#ifdef __WINRT__
-        this->osdLastShowTime = 0xffffffff;
-#else
-        this->osdLastShowTime = (std::numeric_limits<std::time_t>::max)();
-#endif
-        this->osd_state = OSDState::ALWAYS_ON;
+        this->osdLastShowTime = 0;
+        this->osd_state       = OSDState::ALWAYS_ON;
     }
 }
 
@@ -1117,7 +1116,7 @@ void VideoView::refreshToggleIcon() {
 
 void VideoView::setProgress(float value) {
     if (is_seeking) return;
-    if (isnan(value)) return;
+    if (std::isnan(value)) return;
     this->osdSlider->setProgress(value);
 }
 
@@ -1131,7 +1130,7 @@ void VideoView::showHint(const std::string& value) {
     brls::Logger::debug("Video hint: {}", value);
     this->hintLabel->setText(value);
     this->hintBox->setVisibility(brls::Visibility::VISIBLE);
-    this->hintLastShowTime = wiliwili::unix_time() + VideoView::OSD_SHOW_TIME;
+    this->hintLastShowTime = brls::getCPUTimeUsec() + VideoView::OSD_SHOW_TIME * 1000;
     this->showOSD();
 }
 
@@ -1287,8 +1286,9 @@ void VideoView::buttonProcessing() {
     input->updateUnifiedControllerState(&state);
 
     // 当OSD显示时上下左右切换选择按钮，持续显示OSD
-    if (isOSDShown() && (state.buttons[brls::BUTTON_NAV_RIGHT] || state.buttons[brls::BUTTON_NAV_LEFT] ||
-                         state.buttons[brls::BUTTON_NAV_UP] || state.buttons[brls::BUTTON_NAV_DOWN])) {
+    if (is_focus_on_osd && isOSDShown() &&
+        (state.buttons[brls::BUTTON_NAV_RIGHT] || state.buttons[brls::BUTTON_NAV_LEFT] ||
+         state.buttons[brls::BUTTON_NAV_UP] || state.buttons[brls::BUTTON_NAV_DOWN])) {
         if (this->osd_state == OSDState::SHOWN) this->showOSD(true);
     }
     if (is_osd_lock) return;
@@ -1474,7 +1474,8 @@ void VideoView::onChildFocusGained(View* directChild, View* focusedView) {
         return;
     }
     // 只有在全屏显示OSD时允许OSD组件获取焦点
-    if (this->isFullscreen() && isOSDShown()) {
+    is_focus_on_osd = isFullscreen() && isOSDShown();
+    if (is_focus_on_osd) {
         // 当弹幕按钮隐藏时不可获取焦点
         if (focusedView->getParent()->getVisibility() == brls::Visibility::GONE) {
             brls::Application::giveFocus(this);

@@ -3,6 +3,7 @@
 //
 
 #include <pystring.h>
+#include <yoga/YGNode.h>
 #include <borealis/core/touch/tap_gesture.hpp>
 #include <borealis/core/thread.hpp>
 #include <borealis/views/applet_frame.hpp>

@@ -35,6 +35,7 @@ const std::string GridSubAreaCellContentXML = R"xml(
 
     <brls:Label
             id="area/title"
+            singleLine="true"
             width="auto"
             height="auto"
             grow="1"

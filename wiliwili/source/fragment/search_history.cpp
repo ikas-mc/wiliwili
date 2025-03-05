@@ -25,7 +25,6 @@ brls::View *SearchHistory::create() { return new SearchHistory(); }
 
 SearchHistory::~SearchHistory() {
     brls::Logger::debug("Fragment SearchHistory: delete");
-    this->recyclingGrid->clearData();
 }
 
 class HistoryDataSource : public RecyclingGridDataSource {

@@ -8,6 +8,7 @@
 #include <cpr/cpr.h>
 
 #include "bilibili/util/md5.hpp"
+#include "bilibili/util/json.hpp"
 #include "utils/number_helper.hpp"
 #include <pystring.h>
 
@@ -27,9 +28,41 @@ using ErrorCallback = std::function<void(const std::string&, int code)>;
 #endif
 #define CALLBACK(data) \
     if (callback) callback(data)
-#define CPR_HTTP_BASE                                                                               \
-    cpr::HttpVersion{cpr::HttpVersionCode::VERSION_2_0_TLS}, cpr::Timeout{bilibili::HTTP::TIMEOUT}, \
-        bilibili::HTTP::HEADERS, bilibili::HTTP::COOKIES, bilibili::HTTP::PROXIES, bilibili::HTTP::VERIFY
+
+class CurlSharedObject {
+public:
+    CurlSharedObject() {
+        share = curl_share_init();
+        curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
+        // TODO: 下列两个选线不支持多线程，需要实现自定义线程池，每个线程共享一个 curl share 对象
+        // curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
+        // curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
+        curl_share_setopt(share, CURLSHOPT_LOCKFUNC, lock_callback);
+        curl_share_setopt(share, CURLSHOPT_UNLOCKFUNC, unlock_callback);
+        curl_share_setopt(share, CURLSHOPT_USERDATA, lock_array);
+    }
+    ~CurlSharedObject() {
+        curl_share_cleanup(share);
+    }
+
+    static void lock_callback(CURL *handle, curl_lock_data data, curl_lock_access access, void *userptr) {
+        auto *lock_array = (std::recursive_mutex *)userptr;
+        lock_array[data].lock();
+    }
+
+    static void unlock_callback(CURL *handle, curl_lock_data data, void *userptr) {
+        auto *lock_array = (std::recursive_mutex *)userptr;
+        lock_array[data].unlock();
+    }
+
+    CURLSH* getShare() {
+        return share;
+    }
+
+private:
+    CURLSH* share;
+    std::recursive_mutex lock_array[CURL_LOCK_DATA_LAST];
+};
 
 class HTTP {
 public:
@@ -40,16 +73,37 @@ public:
         {"Origin", "https://www.bilibili.com"},
     };
     static inline int TIMEOUT = 10000;
+    static inline int CONNECTION_TIMEOUT = 0;
+    static inline int DNS_CACHE_TIMEOUT = 60;
     static inline cpr::Proxies PROXIES;
     static inline cpr::VerifySsl VERIFY;
+    static inline std::string PROTOCOL = "https:";
+    static inline CurlSharedObject CURL_SHARE;
 
-    static cpr::Response get(const std::string& url, const cpr::Parameters& parameters = {}, int timeout = 10000);
+    static std::shared_ptr<cpr::Session> createSession() {
+        auto session = std::make_shared<cpr::Session>();
+        CURL* curl = session->GetCurlHolder()->handle;
+        curl_easy_setopt(curl, CURLOPT_SHARE, HTTP::CURL_SHARE.getShare());
+        curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, HTTP::DNS_CACHE_TIMEOUT);
+        session->SetTimeout(cpr::Timeout{bilibili::HTTP::TIMEOUT});
+        session->SetConnectTimeout(cpr::ConnectTimeout{bilibili::HTTP::CONNECTION_TIMEOUT});
+        session->SetHeader(bilibili::HTTP::HEADERS);
+        session->SetCookies(bilibili::HTTP::COOKIES);
+        session->SetProxies(bilibili::HTTP::PROXIES);
+        session->SetVerifySsl(bilibili::HTTP::VERIFY);
+        return session;
+    }
 
     static void __cpr_post(const std::string& url, const cpr::Parameters& parameters = {},
                            const cpr::Payload& payload                               = {},
                            const std::function<void(const cpr::Response&)>& callback = nullptr,
                            const ErrorCallback& error                                = nullptr) {
-        cpr::PostCallback(
+        auto session = createSession();;
+        session->SetUrl(cpr::Url{parseLink(url)});
+        session->SetParameters(parameters);
+        session->SetPayload(payload);
+
+        session->PostCallback(
             [callback, error](const cpr::Response& r) {
                 if (r.error) {
                     ERROR_MSG(r.error.message, -1);
@@ -59,14 +113,17 @@ public:
                     return;
                 }
                 callback(r);
-            },
-            cpr::Url{url}, parameters, payload, CPR_HTTP_BASE);
+            });
     }
 
     static void __cpr_get(const std::string& url, const cpr::Parameters& parameters = {},
                           const std::function<void(const cpr::Response&)>& callback = nullptr,
                           const ErrorCallback& error                                = nullptr) {
-        cpr::GetCallback(
+        auto session = createSession();;
+        session->SetUrl(cpr::Url{parseLink(url)});
+        session->SetParameters(parameters);
+
+        session->GetCallback(
             [callback, error](const cpr::Response& r) {
                 if (r.error) {
                     ERROR_MSG(r.error.message, -1);
@@ -76,8 +133,7 @@ public:
                     return;
                 }
                 callback(r);
-            },
-            cpr::Url{url}, parameters, CPR_HTTP_BASE);
+            });
     }
 
     template <typename ReturnType>

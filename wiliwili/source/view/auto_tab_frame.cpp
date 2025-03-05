@@ -17,6 +17,7 @@
     limitations under the License.
 */
 
+#include <tinyxml2.h>
 #include <borealis/views/rectangle.hpp>
 #include <utility>
 

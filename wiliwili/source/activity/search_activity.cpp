@@ -23,7 +23,6 @@ SearchActivity::SearchActivity(const std::string& key) {
 
 void SearchActivity::onContentAvailable() {
     brls::Logger::debug("SearchActivity: onContentAvailable");
-    this->requestSearch(SearchActivity::currentKey);
 
     this->registerAction(
         "wiliwili/search/tab"_i18n, brls::ControllerButton::BUTTON_Y, [this](brls::View* view) -> bool {
@@ -42,6 +41,8 @@ void SearchActivity::onContentAvailable() {
     this->getUpdateSearchEvent()->subscribe([this](const std::string& s) { this->search(s); });
     this->searchTab->getSearchHotsTab()->setSearchCallback(&updateSearchEvent);
     this->searchTab->getSearchHistoryTab()->setSearchCallback(&updateSearchEvent);
+
+    this->requestSearch(SearchActivity::currentKey);
 }
 
 void SearchActivity::search(const std::string& key) {

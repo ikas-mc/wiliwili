@@ -100,8 +100,9 @@ public:
         if (pos <= 0) return;
         if (r.item.uri.compare(0, 18, "https://t.bilibili") == 0) {
             // 解析动态id
+            // uri eg: https://t.bilibili.com/123456789012345678#replay123123123123
             std::string t = r.item.uri.substr(pos + 1);
-            Intent::openActivity(t);
+            Intent::openActivity(t.substr(0, t.find_first_of('#')));
             return;
         } else if (r.item.type == "video" || r.item.type == "reply") {
             // 解析BV号

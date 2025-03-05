@@ -71,6 +71,10 @@ void RecyclingGridItemVideoCard::setExtraInfo(const std::string& extra, float wi
     }
 }
 
+void RecyclingGridItemVideoCard::setTitle(const RichTextData& title) {
+    this->labelTitle->setRichText(title);
+}
+
 void RecyclingGridItemVideoCard::setBasicInfo(const std::string& title, const std::string& pic, const std::string& username) {
     this->labelTitle->setIsWrapping(true);
     this->labelTitle->setText(title);
@@ -293,16 +297,18 @@ void RecyclingGridItemSearchPGCVideoCard::setCard(std::string pic, std::string t
         this->labelActor->setText(actor);
     }
 
-    unsigned char r, g, b;
-    int result = sscanf(badge_color.c_str(), "#%02hhx%02hhx%02hhx", &r, &g, &b);
-    if (result == 3) {
-        this->boxTop->setVisibility(brls::Visibility::VISIBLE);
-        this->boxTop->setBackgroundColor(nvgRGB(r, g, b));
-    } else {
+    if (badge_color.empty()) {
         this->boxTop->setVisibility(brls::Visibility::GONE);
+    } else {
+        this->boxTop->setVisibility(brls::Visibility::VISIBLE);
+        this->boxTop->applyXMLAttribute("backgroundColor", badge_color);
     }
 
     ImageHelper::with(this->picture)->load(pic);
+}
+
+void RecyclingGridItemSearchPGCVideoCard::setTitle(const RichTextData& title) {
+    this->labelTitle->setRichText(title);
 }
 
 RecyclingGridItem* RecyclingGridItemSearchPGCVideoCard::create() { return new RecyclingGridItemSearchPGCVideoCard(); }
@@ -490,12 +496,10 @@ void RecyclingGridItemSeasonSeriesVideoCard::setCard(const std::string& pic, con
     this->labelLike->setText(likeCount);
     this->badgeTop->setText(badge);
 
-    unsigned char r, g, b;
-    int result = sscanf(badge_color.c_str(), "#%02hhx%02hhx%02hhx", &r, &g, &b);
-    if (result == 3 && !badge.empty()) {
-        this->boxTop->setVisibility(brls::Visibility::VISIBLE);
-        this->boxTop->setBackgroundColor(nvgRGB(r, g, b));
-    } else {
+    if (badge_color.empty() || badge.empty()) {
         this->boxTop->setVisibility(brls::Visibility::GONE);
+    } else {
+        this->boxTop->setVisibility(brls::Visibility::VISIBLE);
+        this->boxTop->applyXMLAttribute("backgroundColor", badge_color);
     }
 }

@@ -5,9 +5,9 @@
 #pragma once
 
 #include "view/recycling_grid.hpp"
+#include "view/text_box.hpp"
 
 class SVGImage;
-class TextBox;
 
 class BaseVideoCard : public RecyclingGridItem {
 public:
@@ -19,6 +19,7 @@ protected:
     BRLS_BIND(brls::Image, picture, "video/card/picture");
 };
 
+/// 通用卡片: 普通视频/每周必看/入站必刷 视频卡片
 class RecyclingGridItemVideoCard : public BaseVideoCard {
 public:
     RecyclingGridItemVideoCard();
@@ -35,6 +36,12 @@ public:
     void setCard(const std::string& pic, const std::string& title, const std::string& username,
                  const std::string& viewCount = "", const std::string& danmakuCount = "",
                  const std::string& rightBottomBadge = "", const std::string& extra = "");
+
+    /**
+     * 设置富文本标题
+     * @param title 富文本标题
+     */
+    void setTitle(const RichTextData& title);
 
     /**
      * 视频卡片基础信息
@@ -88,6 +95,7 @@ private:
     BRLS_BIND(brls::Label, labelAchievement, "video/card/label/achievement");
 };
 
+/// 热门-排行榜 视频卡片
 class RecyclingGridItemRankVideoCard : public BaseVideoCard {
 public:
     explicit RecyclingGridItemRankVideoCard(std::string res = "xml/views/video_card_rank.xml");
@@ -110,6 +118,7 @@ private:
     BRLS_BIND(brls::Box, boxPic, "video/card/pic_box");
 };
 
+/// 直播推荐 视频卡片
 class RecyclingGridItemLiveVideoCard : public BaseVideoCard {
 public:
     RecyclingGridItemLiveVideoCard();
@@ -131,6 +140,7 @@ private:
     BRLS_BIND(SVGImage, svgUp, "video/svg/up");
 };
 
+/// 追番/影视 视频卡片 (可横可竖)
 class RecyclingGridItemPGCVideoCard : public BaseVideoCard {
 public:
     explicit RecyclingGridItemPGCVideoCard(bool vertical_cover = true);
@@ -158,6 +168,7 @@ private:
     bool vertical_cover = true;
 };
 
+/// 搜索页 番剧/电影 视频卡片
 class RecyclingGridItemSearchPGCVideoCard : public BaseVideoCard {
 public:
     RecyclingGridItemSearchPGCVideoCard();
@@ -168,12 +179,18 @@ public:
                  std::string badge_top, std::string badge_color, std::string scoreCount, std::string score,
                  std::string type, std::string bottom);
 
+    /**
+     * 设置富文本标题
+     * @param title 富文本标题
+     */
+    void setTitle(const RichTextData& title);
+
     static RecyclingGridItem* create();
 
 private:
     BRLS_BIND(brls::Box, boxTop, "video/card/badge/boxTop");
     BRLS_BIND(brls::Label, badgeTop, "video/card/badge/top");
-    BRLS_BIND(brls::Label, labelTitle, "video/card/label/title");
+    BRLS_BIND(TextBox, labelTitle, "video/card/label/title");
     BRLS_BIND(brls::Label, labelSubtitle, "video/card/label/subtitle");
     BRLS_BIND(brls::Label, labelActor, "video/card/label/actor");
     BRLS_BIND(brls::Label, labelDesc, "video/card/label/desc");
@@ -184,6 +201,7 @@ private:
     BRLS_BIND(brls::Box, boxPic, "video/card/pic_box");
 };
 
+/// 追番/影视 各列表最后一项 "查看全部" 卡片
 class RecyclingGridItemViewMoreCard : public RecyclingGridItem {
 public:
     explicit RecyclingGridItemViewMoreCard(bool vertical_cover = true);
@@ -202,6 +220,7 @@ private:
     bool vertical_cover = true;
 };
 
+/// 历史记录 视频卡片
 class RecyclingGridItemHistoryVideoCard : public BaseVideoCard {
 public:
     RecyclingGridItemHistoryVideoCard();
@@ -227,6 +246,7 @@ private:
     BRLS_BIND(brls::Rectangle, rectProgress, "video/card/progress");
 };
 
+/// 我的收藏/我的订阅 视频卡片
 class RecyclingGridItemCollectionVideoCard : public BaseVideoCard {
 public:
     RecyclingGridItemCollectionVideoCard();
@@ -246,6 +266,7 @@ private:
     BRLS_BIND(brls::Box, boxPic, "video/card/pic_box");
 };
 
+/// 播放页 推荐/投稿 视频卡片
 class RecyclingGridItemRelatedVideoCard : public BaseVideoCard {
 public:
     RecyclingGridItemRelatedVideoCard();
@@ -272,6 +293,7 @@ private:
     BRLS_BIND(brls::Box, boxCharging, "video/card/box/charging");
 };
 
+/// 播放页 影视/番剧 系列剧集卡片
 class RecyclingGridItemSeasonSeriesVideoCard : public BaseVideoCard {
 public:
     RecyclingGridItemSeasonSeriesVideoCard();
