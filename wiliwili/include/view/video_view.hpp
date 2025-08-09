@@ -95,9 +95,15 @@ public:
 
     void toggleOSDLock();
 
+    void toggleVideoProfile();
+
     void toggleDanmaku();
 
     void toggleOSD();
+
+    static void showSpeedList();
+
+    void showPlayerSetting() const;
 
     void showLoading();
 
@@ -230,6 +236,8 @@ public:
     void unRegisterMpvEvent();
 
     void buttonProcessing();
+
+    void registerCommonActions(brls::Activity* activity);
 
     // 用于 VideoView 可以接收的自定义事件
     inline static const std::string QUALITY_CHANGE = "QUALITY_CHANGE";

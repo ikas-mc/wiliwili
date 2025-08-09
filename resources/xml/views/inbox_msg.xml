@@ -1,5 +1,6 @@
 <brls:Box
         focusable="false"
+        hideClickAnimation="true"
         axis="column">
 
         <brls:Label

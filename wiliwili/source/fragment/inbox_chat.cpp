@@ -9,6 +9,7 @@
 #include "view/inbox_msg_card.hpp"
 #include "view/custom_button.hpp"
 #include "utils/number_helper.hpp"
+#include "utils/shortcut_helper.hpp"
 
 using namespace brls::literals;
 
@@ -68,15 +69,24 @@ public:
     void onItemSelected(RecyclingGrid* recycler, size_t index) override {
         auto & r = this->list[index];
         int source{};
-        if (r.content.at("source").is_number_integer())
+        if (r.content.contains("source") && r.content.at("source").is_number_integer())
             source = r.content.at("source").get<int>();
-        if (r.msg_type == 7 && source == 5) {
+        // msg_type 7 表示视频
+        // source 5 表示 UGC 视频，source 16 表示 PGC 视频
+        if (r.msg_type == 7 && (source == 5 || source == 16)) {
             // UGC video
             std::string avid;
-            if (r.content.at("id").is_string())
+            if (r.content.contains("id") && r.content.at("id").is_string())
                 avid = r.content.at("id").get<std::string>();
-            if (!avid.empty())
-                Intent::openAV(avid);
+            if (!avid.empty()) {
+                if (source == 5) {
+                    // UGC 视频
+                    Intent::openAV(avid);
+                } else {
+                    // PGC 视频
+                    Intent::openSeasonByEpId(std::stoll(avid), 0);
+                }
+            }
         }
     }
 
@@ -134,6 +144,11 @@ InboxChat::InboxChat(const bilibili::InboxChatResult& r, std::function<void()> c
     recyclingGrid->setPaddingBottom(80);
 
     this->registerAction("wiliwili/home/common/refresh"_i18n, brls::BUTTON_X, [this](brls::View* view) {
+        this->recyclingGrid->refresh();
+        return true;
+    });
+
+    this->registerAction(ShortcutHelper::getRefresh(), [this](...) {
         this->recyclingGrid->refresh();
         return true;
     });

@@ -83,7 +83,7 @@ add_definitions(-DFONS_HASH_LUT_SIZE=4096)
 project(wiliwili)
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "5")
-set(VERSION_REVISION "1")
+set(VERSION_REVISION "2")
 if (NOT VERSION_BUILD)
     set(VERSION_BUILD "0")
 endif ()
@@ -91,7 +91,7 @@ set(PROJECT_AUTHOR "xfangfang")
 set(PACKAGE_NAME cn.xfangfang.wiliwili)
 set(VITA_TITLEID "WILIWILI0")
 set(PSN_TITLE_ID "WILI00000")
-set(VITA_VERSION "01.51")
+set(VITA_VERSION "01.52")
 set(PROJECT_ICON ${CMAKE_CURRENT_SOURCE_DIR}/resources/icon/icon.jpg)
 set(PROJECT_RESOURCES ${CMAKE_CURRENT_SOURCE_DIR}/resources)
 set(APP_VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_REVISION}")
@@ -187,6 +187,8 @@ file(GLOB_RECURSE MAIN_SRC wiliwili/source/*.cpp)
 if (WIN32)
     configure_file("${CMAKE_SOURCE_DIR}/wiliwili/app_win32.rc.in" "${CMAKE_BINARY_DIR}/app_win32.rc")
     list(APPEND MAIN_SRC ${CMAKE_BINARY_DIR}/app_win32.rc)
+elseif (PLATFORM_PSV)
+    configure_file("${CMAKE_SOURCE_DIR}/wiliwili/app_vita.xml.in" "${CMAKE_BINARY_DIR}/template.xml")
 elseif (PLATFORM_SWITCH)
     # System service initialization functions required for libnx
     list(APPEND MAIN_SRC ${BOREALIS_LIBRARY}/lib/platforms/switch/switch_wrapper.c)
@@ -206,6 +208,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 )
 set_source_files_properties(
         wiliwili/source/utils/config_helper.cpp
+        wiliwili/source/view/mpv_core.cpp
         wiliwili/source/activity/setting_activity.cpp
         wiliwili/source/activity/dlna_activity.cpp
         PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
@@ -253,7 +256,13 @@ elseif (PLATFORM_IOS)
             "wiliwili"
             "${APP_VERSION}")
 elseif (PLATFORM_PSV)
-    set(PSV_ASSETS_FILES ${CMAKE_SOURCE_DIR}/scripts/psv/sce_sys sce_sys)
+    set(PSV_ASSETS_FILES
+        ${CMAKE_SOURCE_DIR}/scripts/psv/sce_sys/icon0.png sce_sys/icon0.png
+        ${CMAKE_SOURCE_DIR}/scripts/psv/sce_sys/pic0.png sce_sys/pic0.png
+        ${CMAKE_SOURCE_DIR}/scripts/psv/sce_sys/bg.png sce_sys/livearea/contents/bg.png
+        ${CMAKE_SOURCE_DIR}/scripts/psv/sce_sys/startup.png sce_sys/livearea/contents/startup.png
+        ${CMAKE_BINARY_DIR}/template.xml sce_sys/livearea/contents/template.xml
+        )
     if (NOT USE_LIBROMFS)
         list(APPEND PSV_ASSETS_FILES ${CMAKE_SOURCE_DIR}/resources resources)
     endif ()

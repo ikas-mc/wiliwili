@@ -16,6 +16,7 @@
 #include "utils/dialog_helper.hpp"
 #include "utils/number_helper.hpp"
 #include "presenter/comment_related.hpp"
+#include "utils/shortcut_helper.hpp"
 #include "view/qr_image.hpp"
 #include "view/video_view.hpp"
 #include "view/grid_dropdown.hpp"
@@ -214,6 +215,12 @@ void BasePlayerActivity::setCommonData() {
                                       return true;
                                   });
 
+    recyclingGrid->registerAction(ShortcutHelper::getRefresh(),
+                                  [this](brls::View* view) -> bool {
+                                      this->setCommentMode();
+                                      return true;
+                                  });
+
     // 切换右侧Tab
     this->registerAction(
         "上一项", brls::ControllerButton::BUTTON_LT,
@@ -244,6 +251,20 @@ void BasePlayerActivity::setCommonData() {
             return true;
         },
         true);
+
+    this->registerAction(
+        ShortcutHelper::getLast(),
+        [this](brls::View* view) -> bool {
+            tabFrame->focus2LastTab();
+            return true;
+        });
+    this->registerAction(
+        ShortcutHelper::getNext(),
+        [this](brls::View* view) -> bool {
+            tabFrame->focus2NextTab();
+            return true;
+        });
+    video->registerCommonActions(this);
 
     // 调整清晰度
     this->registerAction("wiliwili/player/quality"_i18n, brls::ControllerButton::BUTTON_START,
@@ -457,6 +478,10 @@ void BasePlayerActivity::setVideoQuality() {
             return true;
         },
         true);
+    dropdown->registerAction(ShortcutHelper::getVideoQuality(), [dropdown](...) {
+        dropdown->dismiss();
+        return true;
+    });
 
     // 因为触摸的问题 视频组件上开启新的 activity 需要同步执行
     // 不然在某些情况下焦点会错乱
@@ -476,6 +501,18 @@ void BasePlayerActivity::setCommentMode() {
 
 void BasePlayerActivity::onVideoPlayUrl(const bilibili::VideoUrlResult& result) {
     brls::Logger::debug("onVideoPlayUrl quality: {}", result.quality);
+
+    if (result.accept_quality.empty() || result.accept_description.empty()) {
+        // 通常是返回了其他报错信息, 比如验证码
+        brls::Logger::error("onVideoPlayUrl: no video url available");
+        auto dialog = new brls::Dialog("Error: No video url available");
+        dialog->setCancelable(false);
+        dialog->addButton("hints/ok"_i18n, []() {
+            brls::sync([]() { brls::Application::popActivity(); });
+        });
+        dialog->open();
+        return;
+    }
 
     // 有效期 110 分钟
     videoDeadline = std::chrono::system_clock::now() + std::chrono::seconds(6600);

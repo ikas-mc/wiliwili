@@ -530,6 +530,14 @@ inline void from_json(const nlohmann::json& nlohmann_json_j, VideoUrlResult& nlo
         NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM, quality, timelength, accept_description, accept_quality));
 }
 
+class SeasonUrlResult {
+public:
+    VideoUrlResult video_info;
+};
+inline void from_json(const nlohmann::json& nlohmann_json_j, SeasonUrlResult& nlohmann_json_t) {
+    NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM, video_info));
+}
+
 class SubtitleLine {
 public:
     float from, to;
