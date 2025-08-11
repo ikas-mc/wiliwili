@@ -8,26 +8,28 @@ namespace bilibili {
 
 namespace Api {
 
-const std::string _apiBase     = "https://api.bilibili.com";
-const std::string _appBase     = "https://app.bilibili.com";
-const std::string _vcBase      = "https://api.vc.bilibili.com";
-const std::string _bvcBase     = "https://bvc.bilivideo.com";
-const std::string _liveBase    = "https://api.live.bilibili.com";
-const std::string _passBase    = "https://passport.bilibili.com";
-const std::string _bangumiBase = "https://bangumi.bilibili.com";
-const std::string _grpcBase    = "https://grpc.biliapi.net";
+const std::string _apiBase     = "//api.bilibili.com";
+const std::string _appBase     = "//app.bilibili.com";
+const std::string _vcBase      = "//api.vc.bilibili.com";
+const std::string _bvcBase     = "//bvc.bilivideo.com";
+const std::string _liveBase    = "//api.live.bilibili.com";
+const std::string _passBase    = "//passport.bilibili.com";
+const std::string _bangumiBase = "//bangumi.bilibili.com";
+const std::string _grpcBase    = "//grpc.biliapi.net";
 
 /// ===
 /// 视频API
 /// ===
 
+/// Wbi 签名获取地址
+const std::string Nav = _apiBase + "/x/web-interface/nav";
 /// 视频详情. gRPC
 const std::string DetailGRPC = _grpcBase + "/bilibili.app.view.v1.View/View";
 /// 视频详情.
 const std::string Detail    = _apiBase + "/x/web-interface/view";
 const std::string DetailAll = _apiBase + "/x/web-interface/view/detail";
 /// 视频分P详情
-const std::string PageDetail = _apiBase + "/x/player/v2";
+const std::string PageDetail = _apiBase + "/x/player/wbi/v2";
 /// 番剧详情.
 const std::string SeasonDetail = _apiBase + "/pgc/view/pc/season";
 /// 番剧推荐.
@@ -36,14 +38,16 @@ const std::string SeasonRCMD = _apiBase + "/pgc/season/web/related/recommend";
 const std::string SeasonStatus = _apiBase + "/pgc/view/web/season/user/status";
 /// 在线观看人数.
 const std::string OnlineViewerCount = _apiBase + "/x/player/online/total";
-/// 视频播放信息.
-const std::string PlayInformation = _apiBase + "/x/player/playurl";
+/// 视频播放地址
+const std::string PlayUrl = _apiBase + "/x/player/playurl";
+const std::string PlayUrl2 = _apiBase + "/x/player/wbi/playurl";
 /// 视频播放地址 TV.
 const std::string PlayUrlTV = _apiBase + "/x/tv/card/view_v2";
 /// 视频播放地址 投屏
 const std::string PlayUrlCast = _apiBase + "/x/tv/playurl";
 /// 番剧播放地址
 const std::string SeasonUrl = _apiBase + "/pgc/player/web/playurl";
+const std::string SeasonUrl2 = _apiBase + "/pgc/player/web/v2/playurl";
 /// 视频分P列表.
 const std::string PlayPageList = _apiBase + "/x/player/pagelist";
 /// 视频播放信息.

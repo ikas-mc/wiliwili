@@ -8,6 +8,8 @@
 #include <cpr/cpr.h>
 
 #include "bilibili/util/md5.hpp"
+#include "bilibili/util/json.hpp"
+#include "bilibili/util/wbi.hpp"
 #include "utils/number_helper.hpp"
 #include <pystring.h>
 
@@ -22,14 +24,43 @@ const std::string BILIBILI_BUILD      = "1001011000";
 using ErrorCallback = std::function<void(const std::string&, int code)>;
 #define ERROR_MSG(msg, ...) \
     if (error) error(msg, __VA_ARGS__)
-#ifdef CALLBACK
-#undef CALLBACK
-#endif
-#define CALLBACK(data) \
+#define HTTP_CALLBACK(data) \
     if (callback) callback(data)
-#define CPR_HTTP_BASE                                                                               \
-    cpr::HttpVersion{cpr::HttpVersionCode::VERSION_2_0_TLS}, cpr::Timeout{bilibili::HTTP::TIMEOUT}, \
-        bilibili::HTTP::HEADERS, bilibili::HTTP::COOKIES, bilibili::HTTP::PROXIES, bilibili::HTTP::VERIFY
+
+class CurlSharedObject {
+public:
+    CurlSharedObject() {
+        share = curl_share_init();
+        curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
+        // TODO: 下列两个选线不支持多线程，需要实现自定义线程池，每个线程共享一个 curl share 对象
+        // curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
+        // curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
+        curl_share_setopt(share, CURLSHOPT_LOCKFUNC, lock_callback);
+        curl_share_setopt(share, CURLSHOPT_UNLOCKFUNC, unlock_callback);
+        curl_share_setopt(share, CURLSHOPT_USERDATA, lock_array);
+    }
+    ~CurlSharedObject() {
+        curl_share_cleanup(share);
+    }
+
+    static void lock_callback(CURL *handle, curl_lock_data data, curl_lock_access access, void *userptr) {
+        auto *lock_array = (std::recursive_mutex *)userptr;
+        lock_array[data].lock();
+    }
+
+    static void unlock_callback(CURL *handle, curl_lock_data data, void *userptr) {
+        auto *lock_array = (std::recursive_mutex *)userptr;
+        lock_array[data].unlock();
+    }
+
+    CURLSH* getShare() {
+        return share;
+    }
+
+private:
+    CURLSH* share;
+    std::recursive_mutex lock_array[CURL_LOCK_DATA_LAST];
+};
 
 class HTTP {
 public:
@@ -40,16 +71,37 @@ public:
         {"Origin", "https://www.bilibili.com"},
     };
     static inline int TIMEOUT = 10000;
+    static inline int CONNECTION_TIMEOUT = 0;
+    static inline int DNS_CACHE_TIMEOUT = 60;
     static inline cpr::Proxies PROXIES;
     static inline cpr::VerifySsl VERIFY;
+    static inline std::string PROTOCOL = "https:";
+    static inline CurlSharedObject CURL_SHARE;
 
-    static cpr::Response get(const std::string& url, const cpr::Parameters& parameters = {}, int timeout = 10000);
+    static std::shared_ptr<cpr::Session> createSession() {
+        auto session = std::make_shared<cpr::Session>();
+        CURL* curl = session->GetCurlHolder()->handle;
+        curl_easy_setopt(curl, CURLOPT_SHARE, HTTP::CURL_SHARE.getShare());
+        curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, HTTP::DNS_CACHE_TIMEOUT);
+        session->SetTimeout(cpr::Timeout{bilibili::HTTP::TIMEOUT});
+        session->SetConnectTimeout(cpr::ConnectTimeout{bilibili::HTTP::CONNECTION_TIMEOUT});
+        session->SetHeader(bilibili::HTTP::HEADERS);
+        session->SetCookies(bilibili::HTTP::COOKIES);
+        session->SetProxies(bilibili::HTTP::PROXIES);
+        session->SetVerifySsl(bilibili::HTTP::VERIFY);
+        return session;
+    }
 
-    static void __cpr_post(const std::string& url, const cpr::Parameters& parameters = {},
+    static void _cpr_post(const std::string& url, const cpr::Parameters& parameters = {},
                            const cpr::Payload& payload                               = {},
                            const std::function<void(const cpr::Response&)>& callback = nullptr,
                            const ErrorCallback& error                                = nullptr) {
-        cpr::PostCallback(
+        auto session = createSession();;
+        session->SetUrl(cpr::Url{parseLink(url)});
+        session->SetParameters(parameters);
+        session->SetPayload(payload);
+
+        session->PostCallback(
             [callback, error](const cpr::Response& r) {
                 if (r.error) {
                     ERROR_MSG(r.error.message, -1);
@@ -59,25 +111,28 @@ public:
                     return;
                 }
                 callback(r);
-            },
-            cpr::Url{url}, parameters, payload, CPR_HTTP_BASE);
+            });
     }
 
-    static void __cpr_get(const std::string& url, const cpr::Parameters& parameters = {},
+    static void _cpr_get(const std::string& url, const cpr::Parameters& parameters = {},
                           const std::function<void(const cpr::Response&)>& callback = nullptr,
                           const ErrorCallback& error                                = nullptr) {
-        cpr::GetCallback(
+        auto session = createSession();;
+        session->SetUrl(cpr::Url{parseLink(url)});
+        session->SetParameters(parameters);
+
+        session->GetCallback(
             [callback, error](const cpr::Response& r) {
                 if (r.error) {
                     ERROR_MSG(r.error.message, -1);
                     return;
-                } else if (r.status_code != 200) {
+                }
+                if (r.status_code != 200) {
                     ERROR_MSG("Network error. [Status code: " + std::to_string(r.status_code) + " ]", r.status_code);
                     return;
                 }
                 callback(r);
-            },
-            cpr::Url{url}, parameters, CPR_HTTP_BASE);
+            });
     }
 
     template <typename ReturnType>
@@ -88,10 +143,10 @@ public:
             int code           = res.at("code").get<int>();
             if (code == 0) {
                 if (res.contains("data") && (res.at("data").is_object() || res.at("data").is_array())) {
-                    CALLBACK(res.at("data").get<ReturnType>());
+                    HTTP_CALLBACK(res.at("data").get<ReturnType>());
                     return 0;
                 } else if (res.contains("result") && res.at("result").is_object()) {
-                    CALLBACK(res.at("result").get<ReturnType>());
+                    HTTP_CALLBACK(res.at("result").get<ReturnType>());
                     return 0;
                 } else {
                     printf("data: %s\n", r.text.c_str());
@@ -121,41 +176,61 @@ public:
     }
 
     template <typename ReturnType>
-    static void getResultAsync(const std::string& url, cpr::Parameters parameters = {},
+    static void getResultAsync(const std::string& url,
+                               cpr::Parameters parameters                      = {},
                                const std::function<void(ReturnType)>& callback = nullptr,
-                               const ErrorCallback& error = nullptr, bool needSign = false) {
+                               const ErrorCallback& error                      = nullptr,
+                               bool needSign                                   = false) {
         if (needSign) {
             signParameters(parameters);
         }
-        __cpr_get(
-            url, parameters, [callback, error](const cpr::Response& r) { parseJson<ReturnType>(r, callback, error); },
+        _cpr_get(
+            url,
+            parameters,
+            [callback, error](const cpr::Response& r) {
+                parseJson<ReturnType>(r, callback, error);
+            },
             error);
     }
 
     template <typename ReturnType>
-    static void postResultAsync(const std::string& url, cpr::Parameters parameters = {}, cpr::Payload payload = {},
+    static void getResultWithWbiAsync(const std::string& url,
+                                      cpr::Parameters parameters                      = {},
+                                      const std::function<void(ReturnType)>& callback = nullptr,
+                                      const ErrorCallback& error                      = nullptr) {
+        wbi::updateWbiKeys([url, parameters, callback, error]() mutable {
+            wbi::encWbi(parameters);
+            _cpr_get(
+                url,
+                parameters,
+                [callback, error](const cpr::Response& r) {
+                    parseJson<ReturnType>(r, callback, error);
+                },
+                error);
+        }, error);
+    }
+
+    template <typename ReturnType>
+    static void postResultAsync(const std::string& url,
+                                cpr::Parameters parameters                      = {},
+                                const cpr::Payload& payload                     = {},
                                 const std::function<void(ReturnType)>& callback = nullptr,
-                                const ErrorCallback& error = nullptr, bool needSign = false) {
+                                const ErrorCallback& error                      = nullptr,
+                                bool needSign                                   = false) {
         if (needSign) {
-            parameters.Add({{"appkey", BILIBILI_APP_KEY},
-                            {"build", BILIBILI_BUILD},
-                            {"ts", std::to_string(wiliwili::getUnixTime() * 1000)}});
-            std::vector<std::string> kv;
-            pystring::split(parameters.GetContent(cpr::CurlHolder()), kv, "&");
-            std::sort(kv.begin(), kv.end());
-            parameters.Add({{"sign", websocketpp::md5::md5_hash_hex(pystring::join("&", kv) + BILIBILI_APP_SECRET)}});
+            signParameters(parameters);
         }
-        __cpr_post(
+        _cpr_post(
             url, parameters, payload,
             [callback, error](const cpr::Response& r) {
                 try {
                     nlohmann::json res = nlohmann::json::parse(r.text);
-                    int code           = res.at("code").get<int>();
+                    const int code     = res.at("code").get<int>();
                     if (code == 0) {
                         if (res.contains("data") && res.at("data").is_object()) {
-                            CALLBACK(res.at("data").get<ReturnType>());
+                            HTTP_CALLBACK(res.at("data").get<ReturnType>());
                         } else if (res.contains("result") && res.at("result").is_object()) {
-                            CALLBACK(res.at("result").get<ReturnType>());
+                            HTTP_CALLBACK(res.at("result").get<ReturnType>());
                         } else {
                             printf("data: %s\n", r.text.c_str());
                             ERROR_MSG("Cannot find data", -1);
@@ -172,14 +247,17 @@ public:
             error);
     }
 
-    static void postResultAsync(const std::string& url, cpr::Parameters parameters = {}, cpr::Payload payload = {},
-                                const std::function<void()>& callback = nullptr, const ErrorCallback& error = nullptr) {
-        __cpr_post(
+    static void postResultAsync(const std::string& url,
+                                const cpr::Parameters& parameters     = {},
+                                const cpr::Payload& payload           = {},
+                                const std::function<void()>& callback = nullptr,
+                                const ErrorCallback& error            = nullptr) {
+        _cpr_post(
             url, parameters, payload,
             [callback, error](const cpr::Response& r) {
                 try {
                     nlohmann::json res = nlohmann::json::parse(r.text);
-                    int code           = res.at("code").get<int>();
+                    const int code     = res.at("code").get<int>();
                     if (code == 0) {
                         if (callback) callback();
                         return;

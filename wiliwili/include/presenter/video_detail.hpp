@@ -130,6 +130,10 @@ public:
 
     static inline int defaultQuality = 116;
 
+    // 最大的视频清晰度限制
+    static inline int landscapeQualityMax = 128;
+    static inline int portraitQualityMax = 128;
+
 protected:
     bilibili::VideoDetailResult videoDetailResult;       //  视频数据
     bilibili::VideoDetailPage videoDetailPage;           // 视频分P数据

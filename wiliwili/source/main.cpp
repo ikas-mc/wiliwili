@@ -9,9 +9,6 @@
  Licensed under the GPL-3.0 license
 */
 
-// Uncomment this line to disable Google Analytics
-//#define NO_GA
-
 #include <borealis.hpp>
 
 #include "utils/config_helper.hpp"
@@ -29,6 +26,11 @@
 #include <winrt/Windows.UI.Core.h>
 #include <winrt/Windows.ApplicationModel.Core.h>
 #include <winrt/Windows.Storage.Streams.h>
+#include <winrt/Windows.UI.ViewManagement.h>
+#endif
+
+#ifdef __WINRT_NEW__
+#include <borealis/platforms/winrt/winrt_app.hpp>
 #endif
 
 int main(int argc, char* argv[]) {
@@ -161,6 +163,12 @@ int main(int argc, char* argv[]) {
     return EXIT_SUCCESS;
 }
 
-#ifdef __WINRT__
+#ifdef __WINRT_NEW__
+int __stdcall wWinMain (HINSTANCE, HINSTANCE, PWSTR szCmdLine, int)
+{
+    (void)szCmdLine;
+    return WinrtApp::RunApp (main);
+}
+#elif __WINRT__
 #include <borealis/core/main.hpp>
 #endif

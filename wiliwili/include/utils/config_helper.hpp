@@ -58,7 +58,10 @@ enum class SettingItem {
     PLAYER_HUE,
     PLAYER_GAMMA,
     PLAYER_OSD_TV_MODE,
+    PLAYER_OSD_HIDE,
     VIDEO_QUALITY,
+    VIDEO_QUALITY_LANDSCAPE_MAX,
+    VIDEO_QUALITY_PORTRAIT_MAX,
     TEXTURE_CACHE_NUM,
     OPENCC_ON,
     CUSTOM_UPDATE_API,
@@ -86,6 +89,7 @@ enum class SettingItem {
     HOME_WINDOW_STATE,
     SEARCH_TV_MODE,
     LIMITED_FPS,
+    SWAP_INTERVAL,
     DEACTIVATED_TIME,
     DEACTIVATED_FPS,
     DLNA_IP,
@@ -94,7 +98,31 @@ enum class SettingItem {
     HTTP_PROXY,
     HTTP_PROXY_STATUS,
     TLS_VERIFY,
+    HTTP_TIMEOUT,
+    HTTP_CONNECTION_TIMEOUT,
+    HTTP_DNS_CACHE_TIMEOUT,
     UP_FILTER,
+    LIVE_DANMAKU_FILTER_LEVEL,
+    LIVE_SIDEBAR_DANMAKU_COUNT, // 直播间侧边栏弹幕数量上限
+    SHORTCUT_REFRESH, // 刷新快捷键
+    SHORTCUT_SEARCH, // 搜索快捷键
+    SHORTCUT_LAST, // 上一个Tab快捷键
+    SHORTCUT_NEXT, // 下一个Tab快捷键
+    SHORTCUT_LAST_SUB, // 上一个子Tab快捷键 (热门、追番、影视 三个页面的二级菜单)
+    SHORTCUT_NEXT_SUB, // 下一个子Tab快捷键
+    SHORTCUT_VOLUME_UP, // 音量增大快捷键
+    SHORTCUT_VOLUME_DOWN, // 音量减小快捷键
+    SHORTCUT_VIDEO_PROFILE, // 视频详情快捷键
+    SHORTCUT_DANMAKU, // 弹幕快捷键
+    SHORTCUT_PLAYLIST, // 播放列表快捷键
+    SHORTCUT_FORWARD, // 快进快捷键
+    SHORTCUT_REWIND, // 快退快捷键
+    SHORTCUT_SETTING, // 设置快捷键
+    SHORTCUT_VIDEO_QUALITY, // 视频清晰度菜单快捷键
+    SHORTCUT_VIDEO_SPEED, // 视频倍速菜单快捷键
+    SHORTCUT_VIDEO_SPEEDUP, // 视频倍速快捷键
+    SHORTCUT_VIDEO_OSD, // 切换OSD显示
+    SHORTCUT_VIDEO_PAUSE, // 视频播放暂停快捷键
 };
 
 class APPVersion : public brls::Singleton<APPVersion> {
@@ -173,7 +201,7 @@ public:
     std::string getRefreshToken() const;
     std::string getCSRF();
     std::string getUserID();
-    std::string getBuvid3();
+    std::string getUuID();
     bool hasLoginInfo();
 
     // Google Analytics ID

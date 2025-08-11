@@ -545,6 +545,14 @@ inline void from_json(const nlohmann::json& nlohmann_json_j, VideoUrlResult& nlo
         NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM, quality, timelength, accept_description, accept_quality));
 }
 
+class SeasonUrlResult {
+public:
+    VideoUrlResult video_info;
+};
+inline void from_json(const nlohmann::json& nlohmann_json_j, SeasonUrlResult& nlohmann_json_t) {
+    NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM, video_info));
+}
+
 class SubtitleLine {
 public:
     float from, to;
@@ -583,6 +591,7 @@ public:
 };
 inline void from_json(const nlohmann::json& nlohmann_json_j, VideoPageSubtitle& nlohmann_json_t) {
     NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM, id_str, lan, lan_doc, subtitle_url));
+    nlohmann_json_t.subtitle_url = parseLink(nlohmann_json_t.subtitle_url);
 }
 
 typedef std::vector<VideoPageSubtitle> VideoPageSubtitleList;
@@ -607,6 +616,7 @@ inline void from_json(const nlohmann::json& nlohmann_json_j, VideoPageResult& nl
     }
     if (nlohmann_json_j.contains("dm_mask") && nlohmann_json_j.at("dm_mask").is_object()) {
         nlohmann_json_j.at("dm_mask").at("mask_url").get_to(nlohmann_json_t.mask_url);
+        nlohmann_json_t.mask_url = parseLink(nlohmann_json_t.mask_url);
     }
     NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM, online_count, last_play_time, last_play_cid));
 }

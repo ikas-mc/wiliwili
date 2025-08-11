@@ -13,8 +13,8 @@
 
 #include "bilibili.h"
 #include "activity/setting_activity.hpp"
-#include "activity/hint_activity.hpp"
 #include "activity/search_activity_tv.hpp"
+#include "activity/hint_activity.hpp"
 #include "fragment/setting_network.hpp"
 #include "fragment/test_rumble.hpp"
 #include "utils/config_helper.hpp"
@@ -270,6 +270,8 @@ void SettingActivity::onContentAvailable() {
 #endif
 #elif defined(BOREALIS_USE_D3D11)
                                + " (D3D11)"
+#elif defined(BOREALIS_USE_GXM)
+                               + " (GXM)"
 #endif
     );
     labelOpensource->setText(OPENSOURCE);
@@ -315,12 +317,41 @@ void SettingActivity::onContentAvailable() {
 
     /// Limited FPS
     auto fpsOption = conf.getOptionData(SettingItem::LIMITED_FPS);
+    int swapInterval = conf.getSettingItem(SettingItem::SWAP_INTERVAL, 1);
+    int limitedFPS = conf.getSettingItem(SettingItem::LIMITED_FPS, 0);
+    int fpsIndex = conf.getIntOptionIndex(SettingItem::LIMITED_FPS);
+    if ((limitedFPS > 0 && fpsIndex == 0) || (swapInterval == 0 && fpsIndex == 0) ||
+        swapInterval < 0 || swapInterval > 4) {
+        // 用户自定义配置
+        selectorFPS->setVisibility(brls::Visibility::GONE);
+    } else if (limitedFPS == 0) {
+        // 垂直同步
+        fpsIndex = swapInterval - 1;
+    } else {
+        // 关闭垂直同步，限制帧数
+        fpsIndex += 3;
+    }
     selectorFPS->init("wiliwili/setting/app/others/limited_fps"_i18n,
-                      {"wiliwili/setting/app/others/limited_fps_vsync"_i18n, "30", "60", "90", "120"},
-                      (size_t)conf.getIntOptionIndex(SettingItem::LIMITED_FPS), [fpsOption](int data) {
-                          int fps = fpsOption.rawOptionList[data];
-                          brls::Application::setLimitedFPS(fps);
-                          ProgramConfig::instance().setSettingItem(SettingItem::LIMITED_FPS, fps);
+                      {"wiliwili/setting/app/others/limited_fps_vsync"_i18n,
+                       std::string{"1/2 "} + "wiliwili/setting/app/others/limited_fps_vsync"_i18n,
+                       std::string{"1/3 "} + "wiliwili/setting/app/others/limited_fps_vsync"_i18n,
+                       std::string{"1/4 "} + "wiliwili/setting/app/others/limited_fps_vsync"_i18n,
+                       "30", "60", "90", "120"},
+                      fpsIndex, [fpsOption](int data) {
+                          if (data <= 3) {
+                              // 垂直同步
+                              ProgramConfig::instance().setSettingItem(SettingItem::LIMITED_FPS, 0);
+                              ProgramConfig::instance().setSettingItem(SettingItem::SWAP_INTERVAL, data + 1);
+                              brls::Application::setLimitedFPS(0);
+                              brls::Application::setSwapInterval(data + 1);
+                          } else {
+                              // 限制帧数
+                              int fps = fpsOption.rawOptionList[data - 3];
+                              ProgramConfig::instance().setSettingItem(SettingItem::LIMITED_FPS, fps);
+                              ProgramConfig::instance().setSettingItem(SettingItem::SWAP_INTERVAL, 0);
+                              brls::Application::setLimitedFPS(fps);
+                              brls::Application::setSwapInterval(0);
+                          }
                           return true;
                       });
 
@@ -637,7 +668,7 @@ void SettingActivity::onContentAvailable() {
         "wiliwili/setting/app/network/proxy_hint"_i18n, "wiliwili/setting/app/network/proxy_hint"_i18n, 64);
 
 /// Hardware decode
-#if defined(PS4) || defined(__PSV__)
+#if defined(PS4) || defined(__PSV__) && defined(BOREALIS_USE_OPENGL)
     btnHWDEC->setVisibility(brls::Visibility::GONE);
 #else
     btnHWDEC->init("wiliwili/setting/app/playback/hwdec"_i18n, conf.getBoolOption(SettingItem::PLAYER_HWDEC),
@@ -664,6 +695,35 @@ void SettingActivity::onContentAvailable() {
                          MPVCore::LOW_QUALITY = value;
                          MPVCore::instance().restart();
                      });
+
+    // 添加直播侧边栏弹幕数量设置
+    auto& sidebarConf = ProgramConfig::instance();
+    // 获取实际保存的弹幕数量
+    int sidebarCount = sidebarConf.getIntOption(SettingItem::LIVE_SIDEBAR_DANMAKU_COUNT);
+    // 建立映射关系：实际值到索引
+    const std::vector<int> counts = {0, 10, 25, 50, 100};
+    // 默认选择索引
+    int sidebarIndex = 4; // 默认100条
+    
+    // 根据保存的实际值找到对应的索引
+    for (size_t i = 0; i < counts.size(); i++) {
+        if (sidebarCount == counts[i]) {
+            sidebarIndex = i;
+            break;
+        }
+    }
+    
+    this->selectorLiveSidebarCount->init(
+        "wiliwili/setting/app/ui/live_sidebar_count"_i18n,
+        {"0 ("_i18n + "wiliwili/setting/app/ui/live_sidebar_hide"_i18n + ")", "10", "25", "50", "100"},
+        sidebarIndex,
+        [counts](int data) {
+            // 索引值转换为实际的弹幕数量值
+            const int actualCount = counts[data];
+            ProgramConfig::instance().setSettingItem(SettingItem::LIVE_SIDEBAR_DANMAKU_COUNT, actualCount, true);
+            return true;
+        }
+    );
 }
 
 SettingActivity::~SettingActivity() { brls::Logger::debug("SettingActivity: delete"); }

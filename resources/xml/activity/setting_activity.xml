@@ -23,6 +23,7 @@
                         width="auto"
                         height="auto"
                         marginTop="10"
+                        scrollingBehavior="centered"
                         grow="1.0">
 
                     <brls:Box
@@ -104,6 +105,7 @@
                         width="auto"
                         height="auto"
                         marginTop="10"
+                        scrollingBehavior="centered"
                         grow="1.0">
 
                     <brls:Box
@@ -200,6 +202,9 @@
                             <brls:BooleanCell
                                     id="cell/gamepadVibration"/>
 
+                            <SelectorCell
+                                    id="setting/live/sidebar_count"/>
+
                             <brls:BooleanCell
                                     id="setting/opencc"/>
 
@@ -219,6 +224,7 @@
                         width="auto"
                         height="auto"
                         marginTop="10"
+                        scrollingBehavior="centered"
                         grow="1.0">
 
                     <brls:Box
@@ -282,6 +288,7 @@
                         width="auto"
                         height="auto"
                         marginTop="10"
+                        scrollingBehavior="centered"
                         grow="1.0">
 
                     <brls:Box

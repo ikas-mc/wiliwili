@@ -38,7 +38,7 @@ void BilibiliClient::get_login_url_v2(const std::function<void(std::string, std:
 /// check if qrcode has been scanned
 void BilibiliClient::get_login_info(const std::string& oauthKey, const std::function<void(enum LoginInfo)>& callback,
                                     const ErrorCallback& error) {
-    HTTP::__cpr_post(
+    HTTP::_cpr_post(
         Api::QrLoginInfo, {}, {{"oauthKey", oauthKey}},
         [callback, error](const cpr::Response& r) {
             try {
@@ -80,7 +80,7 @@ void BilibiliClient::get_login_info_v2(const std::string& qrcodeKey, const std::
                       {"device_name", deviceName}},
                      false};
 
-    HTTP::__cpr_get(
+    HTTP::_cpr_get(
         Api::QrLoginInfoV2, {{"qrcode_key", qrcodeKey}, {"source", "main_electron_pc"}},
         [callback, error, buvid3](const cpr::Response& r) {
             try {
@@ -89,7 +89,7 @@ void BilibiliClient::get_login_info_v2(const std::string& qrcodeKey, const std::
                 auto data          = res.at("data").get<QrLoginInfoResultV2>();
                 if (data.status) {
                     std::map<std::string, std::string> cookies;
-                    cookies["buvid3"] = buvid3;
+                    cookies["_uuid"] = buvid3;
                     for (const auto& cookie : r.cookies) {
                         cookies[cookie.GetName()] = cookie.GetValue();
                         HTTP::COOKIES.emplace_back({cookie.GetName(), cookie.GetValue()});

@@ -102,9 +102,15 @@ public:
 
     void toggleOSDLock();
 
+    void toggleVideoProfile();
+
     void toggleDanmaku();
 
     void toggleOSD();
+
+    static void showSpeedList();
+
+    void showPlayerSetting() const;
 
     void showLoading();
 
@@ -238,6 +244,8 @@ public:
 
     void buttonProcessing();
 
+    void registerCommonActions(brls::Activity* activity);
+
     // 用于 VideoView 可以接收的自定义事件
     inline static const std::string QUALITY_CHANGE = "QUALITY_CHANGE";
     inline static const std::string SET_ONLINE_NUM = "SET_ONLINE_NUM";
@@ -263,6 +271,8 @@ public:
 
     // Highlight progress bar
     inline static bool HIGHLIGHT_PROGRESS_BAR = false;
+
+    inline static int OSD_SHOW_TIME = 5000;
 
 private:
     bool allowFullscreen  = true;
@@ -337,16 +347,16 @@ private:
     BRLS_BIND(SVGImage, osdLockIcon, "video/osd/lock/icon");
 
     // OSD
-    time_t osdLastShowTime     = 0;
-    const time_t OSD_SHOW_TIME = 5;  //默认显示五秒
+    brls::Time osdLastShowTime = 0;
     OSDState osd_state         = OSDState::HIDDEN;
     bool is_osd_shown          = false;
     bool is_osd_lock           = false;
     bool hide_lock_button      = false;
+    bool is_focus_on_osd       = false;
     // 区别于视频的时长，当 real_duration 大于 0 时，播放器进度条的总时长以此为准而不是以视频的实际时长为准
     // 用于正确显示预览视频的进度条，比如付费电影的预览
     int real_duration          = 0;
-    time_t hintLastShowTime    = 0;
+    brls::Time hintLastShowTime    = 0;
     int64_t lastPlayedPosition = POSITION_UNDEFINED;
     VideoHighlightData highlightData;  // 在播放器进度条上显示的标记点（用来展示片头片尾标记）
 

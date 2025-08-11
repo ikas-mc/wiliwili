@@ -164,17 +164,6 @@ void MPVCore::uninitializeVideo() {
 }
 
 void MPVCore::initializeVideo() {
-	//TODO 
-	//winrt::com_ptr<IDXGISurface> backBuffer;
-
-	//IDXGISwapChain* swapChain = D3D11_CONTEXT.get()->getSwapChain();
-	//swapChain->GetBuffer(0, winrt::guid_of<IDXGISurface>(), backBuffer.put_void());
-
-	//winrt::com_ptr<::IInspectable> spInspectable = nullptr;
-	//CreateDirect3D11SurfaceFromDXGISurface(backBuffer.get(), spInspectable.put());
-
-	//spInspectable.as(direct3dSurface);
-	////spInspectable->QueryInterface(winrt::guid_of<winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DSurface>(), winrt::put_abi(direct3dSurface));
 }
 
 void MPVCore::setFrameSize(brls::Rect r) {
@@ -214,7 +203,7 @@ void MPVCore::draw(brls::Rect area, float alpha) {
 		auto w = pDesc.BufferDesc.Width - new_min_x;
 		auto h = pDesc.BufferDesc.Height - new_min_y;
 
-		winrt::Windows::Foundation::Rect  targetRectangle;
+		winrt::Windows::Foundation::Rect targetRectangle{};
 		targetRectangle.X = new_min_x;
 		targetRectangle.Y = new_min_y;
 		targetRectangle.Width = drawWidth < w ? drawWidth : w;
@@ -249,10 +238,6 @@ void MPVCore::reset() {
 	mediaPlayer.Source(nullptr);
 	lastFrameWidth = 0;
 	lastFrameHeight = 0;
-
-	// 软硬解切换后应该手动设置一次渲染尺寸
-	// 切换视频前设置渲染尺寸可以顺便将上一条视频的最后一帧画面清空
-	//setFrameSize(rect);
 }
 
 void MPVCore::OnVideoFrameAvailable(winrt::Windows::Media::Playback::MediaPlayer sender,
@@ -299,9 +284,7 @@ void MPVCore::setDashUrl(int start, int end,
 		lastAudioUri = winrt::Windows::Foundation::Uri(winrt::to_hstring(audioUrl));
 
 		auto source = winrt::Windows::Media::Streaming::Adaptive::AdaptiveMediaSource::CreateFromStreamAsync(stream, lastVideoUri, winrt::to_hstring("application/dash+xml"), httpClient).get();
-
-		auto status = source.Status();
-		if (winrt::Windows::Media::Streaming::Adaptive::AdaptiveMediaSourceCreationStatus::Success == status) {
+		if (winrt::Windows::Media::Streaming::Adaptive::AdaptiveMediaSourceCreationStatus::Success == source.Status ()) {
 			source.MediaSource().AdvancedSettings().AllSegmentsIndependent(true);
 
 			source.MediaSource().DownloadRequested([this](
@@ -320,7 +303,6 @@ void MPVCore::setDashUrl(int start, int end,
 
 			mediaPlayer.Source(winrt::Windows::Media::Core::MediaSource::CreateFromAdaptiveMediaSource(source.MediaSource()));
 		}
-
 		mediaPlayer.Play();
 
 		}).wait();
@@ -460,7 +442,6 @@ std::unordered_map<std::string, mpv_node> MPVCore::getNodeMap(
 double MPVCore::getPlaybackTime() const { return playback_time; }
 
 void MPVCore::disableDimming(bool disable) {
-	brls::Logger::info("disableDimming: {}", disable);
 	brls::Application::getPlatform()->disableScreenDimming(
 		disable, "Playing video", APPVersion::getPackageName());
 	static bool deactivationAvailable =
@@ -492,30 +473,22 @@ void MPVCore::PlaybackStateChanged(const winrt::Windows::Media::Playback::MediaP
 		video_paused = false;
 		video_stopped = false;
 		brls::async([this] {
+			disableDimming (true);
 			mpvCoreEvent.fire(MpvEventEnum::MPV_RESUME);
-			mpvCoreEvent.fire(MpvEventEnum::MPV_IDLE);
-			disableDimming(true);
+			mpvCoreEvent.fire (MpvEventEnum::MPV_IDLE);
 			});
 
 	}
-	else if (session.PlaybackState() == winrt::Windows::Media::Playback::MediaPlaybackState::Buffering) {
-		//video_playing = true;
-		//mpvCoreEvent.fire(MpvEventEnum::LOADING_START);
-		//disableDimming(false);
-	}
 	else if (session.PlaybackState() == winrt::Windows::Media::Playback::MediaPlaybackState::Opening) {
-		//video_playing = true;
-		//mpvCoreEvent.fire(MpvEventEnum::LOADING_START);
-		//disableDimming(false);
+		brls::Logger::info ("========> Opening");
 	}
 	else if (session.PlaybackState() == winrt::Windows::Media::Playback::MediaPlaybackState::Paused) {
 		video_playing = false;
 		video_paused = true;
-		//video_stopped = false;
 		brls::async([this] {
 			disableDimming(false);
 			mpvCoreEvent.fire(MpvEventEnum::MPV_PAUSE);
-			mpvCoreEvent.fire(MpvEventEnum::MPV_IDLE);
+			mpvCoreEvent.fire (MpvEventEnum::MPV_IDLE);
 			});
 	}
 }
@@ -539,22 +512,14 @@ void MPVCore::PositionChanged(const winrt::Windows::Media::Playback::MediaPlayba
 
 void MPVCore::BufferingStarted(const winrt::Windows::Media::Playback::MediaPlaybackSession& session,
 	const winrt::Windows::Foundation::IInspectable& value) {
-	// event 8: 文件预加载结束，准备解码
-	//mpvCoreEvent.fire(MpvEventEnum::MPV_LOADED);
-	// event 6: 开始加载文件
-	brls::Logger::info("========> MPV_EVENT_START_FILE");
-	// show osd for a really long time
-	//mpvCoreEvent.fire(MpvEventEnum::START_FILE);
-	brls::async([this] {
-		mpvCoreEvent.fire(MpvEventEnum::LOADING_START);
-		});
-
+	brls::Logger::info ("========> BufferingStarted");
+	mpvCoreEvent.fire (MpvEventEnum::LOADING_START);
 }
 
 void MPVCore::BufferingEnded(const winrt::Windows::Media::Playback::MediaPlaybackSession& session,
 	const winrt::Windows::Foundation::IInspectable& value) {
-	brls::Logger::info("========> MPV_EVENT_PLAYBACK_RESTART");
-	//mpvCoreEvent.fire(MpvEventEnum::LOADING_END);
+	brls::Logger::info("========> BufferingEnded");
+	mpvCoreEvent.fire (MpvEventEnum::LOADING_END);
 }
 
 void MPVCore::MediaEnded(winrt::Windows::Media::Playback::MediaPlayer, winrt::Windows::Foundation::IInspectable const& value) {
@@ -567,6 +532,10 @@ void MPVCore::MediaEnded(winrt::Windows::Media::Playback::MediaPlayer, winrt::Wi
 		mpvCoreEvent.fire(MpvEventEnum::END_OF_FILE);
 		//TODO
 		});
+}
+
+void MPVCore::setHwdecCopyMode (bool value) {
+
 }
 
 void MPVCore::setMirror(bool value) {
