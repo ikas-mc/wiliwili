@@ -460,6 +460,8 @@ private:
     void BufferingEnded(const winrt::Windows::Media::Playback::MediaPlaybackSession& session, const winrt::Windows::Foundation::IInspectable& value);
 
     void MediaEnded(winrt::Windows::Media::Playback::MediaPlayer, winrt::Windows::Foundation::IInspectable const& value);
+    
+    void MediaFailed(winrt::Windows::Media::Playback::MediaPlayer, winrt::Windows::Media::Playback::MediaPlayerFailedEventArgs const& value);
 
     void OnVideoFrameAvailable(winrt::Windows::Media::Playback::MediaPlayer sender, winrt::Windows::Foundation::IInspectable arg);
 

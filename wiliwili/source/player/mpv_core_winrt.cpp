@@ -93,6 +93,7 @@ void MPVCore::init() {
 
 	mediaPlayer = winrt::Windows::Media::Playback::MediaPlayer();
 	mediaPlayer.IsVideoFrameServerEnabled(true);
+
 	mediaPlayer.VideoFrameAvailable({ this, &MPVCore::OnVideoFrameAvailable });
 
 	mediaPlayer.AudioCategory(winrt::Windows::Media::Playback::MediaPlayerAudioCategory::Movie);
@@ -102,6 +103,7 @@ void MPVCore::init() {
 	mediaPlayer.PlaybackSession().BufferingStarted({ this, &MPVCore::BufferingStarted });
 	mediaPlayer.PlaybackSession().BufferingEnded({ this, &MPVCore::BufferingEnded });
 	mediaPlayer.MediaEnded({ this,&MPVCore::MediaEnded });
+	mediaPlayer.MediaFailed ({ this,&MPVCore::MediaFailed });
 
 	if (MPVCore::VIDEO_ASPECT != "-1") {
 		video_aspect = aspectConverter(MPVCore::VIDEO_ASPECT);
@@ -175,19 +177,26 @@ bool MPVCore::isValid() { return true; }
 
 void MPVCore::draw(brls::Rect area, float alpha) {
 	if (!(this->rect == area)) setFrameSize(area);
+	if (alpha < 1) {
+		return;
+	}
 
 	int drawWidth = area.getWidth() * brls::Application::windowScale;
 	int drawHeight = area.getHeight() * brls::Application::windowScale;
 
-	if (drawWidth == 0 || drawHeight == 0) return;
+	if (drawWidth == 0 || drawHeight == 0) {
+		return;
+	};
 
 	float new_min_x = area.getMinX() * brls::Application::windowScale;
 	float new_min_y = area.getMinY() * brls::Application::windowScale;
 
+	auto* vg = brls::Application::getNVGContext ();
+
 	if (mediaPlayer.PlaybackSession().Position() > std::chrono::milliseconds(10)) {
 		winrt::com_ptr<IDXGISurface> backBuffer;
 
-		IDXGISwapChain* swapChain = D3D11_CONTEXT.get()->getSwapChain();
+		IDXGISwapChain* swapChain = D3D11_CONTEXT->getSwapChain();
 		swapChain->GetBuffer(0, winrt::guid_of<IDXGISurface>(), backBuffer.put_void());
 
 		winrt::com_ptr<::IInspectable> spInspectable = nullptr;
@@ -196,21 +205,15 @@ void MPVCore::draw(brls::Rect area, float alpha) {
 		winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DSurface direct3dSurface2{ nullptr };
 		spInspectable.as(direct3dSurface2);
 
-		//TODO 
-		DXGI_SWAP_CHAIN_DESC pDesc{};
-		swapChain->GetDesc(&pDesc);
-
-		auto w = pDesc.BufferDesc.Width - new_min_x;
-		auto h = pDesc.BufferDesc.Height - new_min_y;
-
 		winrt::Windows::Foundation::Rect targetRectangle{};
 		targetRectangle.X = new_min_x;
 		targetRectangle.Y = new_min_y;
-		targetRectangle.Width = drawWidth < w ? drawWidth : w;
-		targetRectangle.Height = drawHeight < h ? drawHeight : h;
-
+		targetRectangle.Width = drawWidth;
+		targetRectangle.Height = drawHeight;
+		D3D11_CONTEXT->clear (brls::Application::getTheme ().getColor ("brls/clear"));
+		D3D11_CONTEXT->beginFrame ();
 		mediaPlayer.CopyFrameToVideoSurface(direct3dSurface2, targetRectangle);
-	}
+	} 
 }
 
 MPVEvent* MPVCore::getEvent() {
@@ -248,6 +251,7 @@ void MPVCore::setDashUrl(int start, int end,
 	std::string videoUrl, std::string videoIndexRange, std::string videoInitRange,
 	std::string audioUrl, std::string audioIndexRange, std::string audioInitRange
 ) {
+	brls::Logger::debug ("dash videoUrl index init: {}  {}  {}  audioUrl index init: {}  {}  {} ", videoUrl, videoIndexRange, videoInitRange, audioUrl, audioIndexRange, audioInitRange);
 	sourceType = 2;
 	concurrency::create_task([&] {
 		auto mpd = std::format(R"(﻿<MPD xmlns="urn:mpeg:DASH:schema:MPD:2011" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011" type="static">
@@ -271,6 +275,7 @@ void MPVCore::setDashUrl(int start, int end,
     </Period>
 </MPD>)", videoIndexRange, videoInitRange, audioIndexRange, audioInitRange);
 
+		brls::Logger::debug ("dash mpd: {}", mpd);
 		winrt::Windows::Storage::Streams::InMemoryRandomAccessStream stream;
 		winrt::Windows::Storage::Streams::DataWriter dataWriter{ stream };
 		dataWriter.UnicodeEncoding(winrt::Windows::Storage::Streams::UnicodeEncoding::Utf8);
@@ -523,7 +528,6 @@ void MPVCore::BufferingEnded(const winrt::Windows::Media::Playback::MediaPlaybac
 }
 
 void MPVCore::MediaEnded(winrt::Windows::Media::Playback::MediaPlayer, winrt::Windows::Foundation::IInspectable const& value) {
-	// event 7: 文件播放结束
 	brls::Logger::info("========> MPV_STOP");
 	video_stopped = true;
 
@@ -532,6 +536,10 @@ void MPVCore::MediaEnded(winrt::Windows::Media::Playback::MediaPlayer, winrt::Wi
 		mpvCoreEvent.fire(MpvEventEnum::END_OF_FILE);
 		//TODO
 		});
+}
+
+void MPVCore::MediaFailed (winrt::Windows::Media::Playback::MediaPlayer, winrt::Windows::Media::Playback::MediaPlayerFailedEventArgs const& args) {
+	brls::Logger::error ("========> MediaFailed:{}", winrt::to_string(args.ErrorMessage ()));
 }
 
 void MPVCore::setHwdecCopyMode (bool value) {
