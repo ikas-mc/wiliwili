@@ -64,15 +64,9 @@ static inline float aspectConverter(const std::string& value) {
 }
 
 void MPVCore::on_update(void* self) {
-	brls::sync([]() {
-
-		});
 }
 
 void MPVCore::on_wakeup(void* self) {
-	brls::sync([]() {
-		MPVCore::instance().eventMainLoop();
-		});
 }
 
 MPVCore::MPVCore() {
@@ -84,8 +78,6 @@ MPVCore::MPVCore() {
 }
 
 void MPVCore::init() {
-	setlocale(LC_NUMERIC, "C");
-
 	brls::Logger::info("use winrt MediaPlayer");
 	httpClient = winrt::Windows::Web::Http::HttpClient();
 	httpClient.DefaultRequestHeaders().UserAgent().Append(winrt::Windows::Web::Http::Headers::HttpProductInfoHeaderValue::Parse(L"bilibili"));
@@ -93,8 +85,7 @@ void MPVCore::init() {
 
 	mediaPlayer = winrt::Windows::Media::Playback::MediaPlayer();
 	mediaPlayer.IsVideoFrameServerEnabled(true);
-
-	mediaPlayer.VideoFrameAvailable({ this, &MPVCore::OnVideoFrameAvailable });
+	//mediaPlayer.VideoFrameAvailable({ this, &MPVCore::OnVideoFrameAvailable });
 
 	mediaPlayer.AudioCategory(winrt::Windows::Media::Playback::MediaPlayerAudioCategory::Movie);
 	mediaPlayer.VolumeChanged({ this,&MPVCore::PlayerVolumeChanged });
@@ -108,7 +99,6 @@ void MPVCore::init() {
 	if (MPVCore::VIDEO_ASPECT != "-1") {
 		video_aspect = aspectConverter(MPVCore::VIDEO_ASPECT);
 	}
-
 	setVolume(MPVCore::VIDEO_VOLUME);
 
 	focusSubscription =brls::Application::getWindowFocusChangedEvent()->subscribe(
@@ -166,17 +156,25 @@ void MPVCore::uninitializeVideo() {
 }
 
 void MPVCore::initializeVideo() {
+
 }
 
 void MPVCore::setFrameSize(brls::Rect r) {
 	rect = r;
-	if (isnan(rect.getWidth()) || isnan(rect.getHeight())) return;
+	if (isnan (rect.getWidth ()) || isnan (rect.getHeight ())) {
+		return;
+	}
 }
 
-bool MPVCore::isValid() { return true; }
+bool MPVCore::isValid() { 
+	return true;
+}
 
 void MPVCore::draw(brls::Rect area, float alpha) {
-	if (!(this->rect == area)) setFrameSize(area);
+	if (!(this->rect == area)) {
+		setFrameSize (area);
+	}
+
 	if (alpha < 1) {
 		return;
 	}
@@ -210,8 +208,7 @@ void MPVCore::draw(brls::Rect area, float alpha) {
 		targetRectangle.Y = new_min_y;
 		targetRectangle.Width = drawWidth;
 		targetRectangle.Height = drawHeight;
-		D3D11_CONTEXT->clear (brls::Application::getTheme ().getColor ("brls/clear"));
-		D3D11_CONTEXT->beginFrame ();
+		
 		mediaPlayer.CopyFrameToVideoSurface(direct3dSurface2, targetRectangle);
 	} 
 }
@@ -225,7 +222,6 @@ std::string MPVCore::getCacheSpeed() const {
 }
 
 void MPVCore::eventMainLoop() {
-
 }
 
 void MPVCore::reset() {
@@ -243,8 +239,7 @@ void MPVCore::reset() {
 	lastFrameHeight = 0;
 }
 
-void MPVCore::OnVideoFrameAvailable(winrt::Windows::Media::Playback::MediaPlayer sender,
-	winrt::Windows::Foundation::IInspectable arg) {
+void MPVCore::OnVideoFrameAvailable(winrt::Windows::Media::Playback::MediaPlayer sender, winrt::Windows::Foundation::IInspectable arg) {
 }
 
 void MPVCore::setDashUrl(int start, int end,
@@ -351,7 +346,6 @@ void MPVCore::setUrl(const std::string& url, const std::string& extra,
 }
 
 void MPVCore::setBackupUrl(const std::string& url, const std::string& extra) {
-	//this->setUrl(url, extra, "append");
 }
 
 void MPVCore::setVolume(int64_t value) {
@@ -382,7 +376,6 @@ void MPVCore::pause() {
 void MPVCore::stop() {
 	this->pause();
 	video_stopped = true;
-	mediaPlayer.Source(nullptr);
 }
 
 void MPVCore::seek(int64_t p) {
@@ -419,23 +412,41 @@ void MPVCore::setSpeed(double value) {
 }
 
 void MPVCore::setAspect(const std::string& value) {
-	MPVCore::VIDEO_ASPECT = value;
-	//video_aspect          = aspectConverter(MPVCore::VIDEO_ASPECT);
-	//TODO 
 }
 
 std::string MPVCore::getString(const std::string& key) {
+	//mpvCore->getString ("video-codec"));
+	//mpvCore->getString ("video-params/pixelformat"));
+
+	// audio
+	//labelAudioCodec->setText (mpvCore->getString ("audio-codec"));
+	//labelAudioChannel->setText (mpvCore->getString ("audio-params/channel-count"));
+
+	if ("hwdec-current" == key) {
+		return "windows default";
+	} 
 	return "";
 }
 
 double MPVCore::getDouble(const std::string& key) {
+	// mpvCore->getDouble ("avsync")));
 	double value = 0;
 	return value;
 }
 
 int64_t MPVCore::getInt(const std::string& key) {
-	int64_t value = 0;
-	return value;
+	if ("video-params/w" == key) {
+		return mediaPlayer.PlaybackSession ().NaturalVideoWidth();
+	}else if ("video-params/h" == key) {
+		return mediaPlayer.PlaybackSession ().NaturalVideoHeight ();
+	}
+	//"audio-params/samplerate"
+	//"audio-bitrate"
+	//mpvCore->getInt ("container-fps")
+	//mpvCore->getInt ("decoder-frame-drop-count"),
+	//mpvCore->getInt ("frame-drop-count")));
+	//mpvCore->getInt ("video-bitrate") / 1024) + "kbps");
+	return 0;
 }
 
 std::unordered_map<std::string, mpv_node> MPVCore::getNodeMap(
@@ -444,14 +455,13 @@ std::unordered_map<std::string, mpv_node> MPVCore::getNodeMap(
 	return nodeMap;
 }
 
-double MPVCore::getPlaybackTime() const { return playback_time; }
+double MPVCore::getPlaybackTime() const { 
+	return playback_time;
+}
 
 void MPVCore::disableDimming(bool disable) {
-	brls::Application::getPlatform()->disableScreenDimming(
-		disable, "Playing video", APPVersion::getPackageName());
-	static bool deactivationAvailable =
-		ProgramConfig::instance().getSettingItem(SettingItem::DEACTIVATED_TIME,
-			0) > 0;
+	brls::Application::getPlatform()->disableScreenDimming(disable, "Playing video", APPVersion::getPackageName());
+	static bool deactivationAvailable =ProgramConfig::instance().getSettingItem(SettingItem::DEACTIVATED_TIME,0) > 0;
 	if (deactivationAvailable) {
 		brls::Application::setAutomaticDeactivation(!disable);
 	}
@@ -468,7 +478,9 @@ void MPVCore::showOsdText(const std::string& value, int d) {
 }
 
 void MPVCore::PlayerVolumeChanged(const winrt::Windows::Media::Playback::MediaPlayer& player, const winrt::Windows::Foundation::IInspectable& value) {
-	mpvCoreEvent.fire(MpvEventEnum::VIDEO_VOLUME_CHANGE);
+	brls::async ([this] {
+		mpvCoreEvent.fire (MpvEventEnum::VIDEO_VOLUME_CHANGE);
+		});
 }
 
 void MPVCore::PlaybackStateChanged(const winrt::Windows::Media::Playback::MediaPlaybackSession& session,
@@ -477,8 +489,8 @@ void MPVCore::PlaybackStateChanged(const winrt::Windows::Media::Playback::MediaP
 		video_playing = true;
 		video_paused = false;
 		video_stopped = false;
+		disableDimming (true);
 		brls::async([this] {
-			disableDimming (true);
 			mpvCoreEvent.fire(MpvEventEnum::MPV_RESUME);
 			mpvCoreEvent.fire (MpvEventEnum::MPV_IDLE);
 			});
@@ -490,8 +502,8 @@ void MPVCore::PlaybackStateChanged(const winrt::Windows::Media::Playback::MediaP
 	else if (session.PlaybackState() == winrt::Windows::Media::Playback::MediaPlaybackState::Paused) {
 		video_playing = false;
 		video_paused = true;
+		disableDimming (false);
 		brls::async([this] {
-			disableDimming(false);
 			mpvCoreEvent.fire(MpvEventEnum::MPV_PAUSE);
 			mpvCoreEvent.fire (MpvEventEnum::MPV_IDLE);
 			});
@@ -505,26 +517,34 @@ void MPVCore::PositionChanged(const winrt::Windows::Media::Playback::MediaPlayba
 
 	if (newDuration != this->duration) {
 		this->duration = newDuration;
-		mpvCoreEvent.fire(MpvEventEnum::UPDATE_DURATION);
+		brls::sync ([&] {
+			mpvCoreEvent.fire (MpvEventEnum::UPDATE_DURATION);
+			});
 	}
 
 	if (std::abs(this->video_progress - this->playback_time) >= 1) {
-		this->video_speed = session.PlaybackRate();
+		this->video_speed = session.PlaybackRate ();
 		this->video_progress = (int64_t)this->playback_time;
-		mpvCoreEvent.fire(MpvEventEnum::UPDATE_PROGRESS);
+		brls::sync ([&] {
+			mpvCoreEvent.fire (MpvEventEnum::UPDATE_PROGRESS);
+			});
 	}
 }
 
 void MPVCore::BufferingStarted(const winrt::Windows::Media::Playback::MediaPlaybackSession& session,
 	const winrt::Windows::Foundation::IInspectable& value) {
 	brls::Logger::info ("========> BufferingStarted");
-	mpvCoreEvent.fire (MpvEventEnum::LOADING_START);
+	brls::sync ([&] {
+		mpvCoreEvent.fire (MpvEventEnum::LOADING_START);
+		});
 }
 
 void MPVCore::BufferingEnded(const winrt::Windows::Media::Playback::MediaPlaybackSession& session,
 	const winrt::Windows::Foundation::IInspectable& value) {
 	brls::Logger::info("========> BufferingEnded");
-	mpvCoreEvent.fire (MpvEventEnum::LOADING_END);
+	brls::sync ([&] {
+		mpvCoreEvent.fire (MpvEventEnum::LOADING_END);
+		});
 }
 
 void MPVCore::MediaEnded(winrt::Windows::Media::Playback::MediaPlayer, winrt::Windows::Foundation::IInspectable const& value) {
@@ -534,16 +554,18 @@ void MPVCore::MediaEnded(winrt::Windows::Media::Playback::MediaPlayer, winrt::Wi
 	brls::delay(200, [this] {
 		mpvCoreEvent.fire(MpvEventEnum::MPV_STOP);
 		mpvCoreEvent.fire(MpvEventEnum::END_OF_FILE);
-		//TODO
 		});
 }
 
 void MPVCore::MediaFailed (winrt::Windows::Media::Playback::MediaPlayer, winrt::Windows::Media::Playback::MediaPlayerFailedEventArgs const& args) {
 	brls::Logger::error ("========> MediaFailed:{}", winrt::to_string(args.ErrorMessage ()));
+	brls::sync ([&] {
+		mpvCoreEvent.fire (MpvEventEnum::MPV_FILE_ERROR);
+		});
 }
 
 void MPVCore::setHwdecCopyMode (bool value) {
-
+	
 }
 
 void MPVCore::setMirror(bool value) {
@@ -551,7 +573,7 @@ void MPVCore::setMirror(bool value) {
 }
 
 void MPVCore::setBrightness(int value) {
-	
+
 }
 
 void MPVCore::setContrast(int value) {
