@@ -203,14 +203,28 @@ void MPVCore::draw(brls::Rect area, float alpha) {
 		winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DSurface direct3dSurface2{ nullptr };
 		spInspectable.as(direct3dSurface2);
 
-		winrt::Windows::Foundation::Rect targetRectangle{};
+		//TODO 
+		DXGI_SWAP_CHAIN_DESC pDesc{};
+		swapChain->GetDesc (&pDesc);
+
+		auto w = pDesc.BufferDesc.Width - new_min_x;
+		auto h = pDesc.BufferDesc.Height - new_min_y;
+
+		winrt::Windows::Foundation::Rect targetRectangle;
 		targetRectangle.X = new_min_x;
 		targetRectangle.Y = new_min_y;
-		targetRectangle.Width = drawWidth;
-		targetRectangle.Height = drawHeight;
+		targetRectangle.Width = drawWidth < w ? drawWidth : w;
+		targetRectangle.Height = drawHeight < h ? drawHeight : h;
 		
 		mediaPlayer.CopyFrameToVideoSurface(direct3dSurface2, targetRectangle);
-	} 
+	} else {
+		nvgBeginPath (vg);
+		NVGcolor bg{};
+		bg.a = alpha;
+		nvgFillColor (vg, bg);
+		nvgRect (vg, rect.getMinX (), rect.getMinY (), rect.getWidth (), rect.getHeight ());
+		nvgFill (vg);
+	}
 }
 
 MPVEvent* MPVCore::getEvent() {
