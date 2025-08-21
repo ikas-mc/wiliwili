@@ -47,3 +47,7 @@ public:
     // 开启动态
     static void openActivity(const std::string& id);
 };
+
+#if defined(__linux__) || defined(_WIN32) || defined(__APPLE__)
+#define ALLOW_FULLSCREEN
+#endif
