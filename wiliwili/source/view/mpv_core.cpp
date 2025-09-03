@@ -306,6 +306,16 @@ void MPVCore::init() {
     // misc
     mpvSetOptionString(mpv, "config", "yes");
     mpvSetOptionString(mpv, "config-dir", confDir.c_str());
+
+    // logs
+    if (brls::Logger::getLogLevel () >= brls::LogLevel::LOG_VERBOSE) {
+        mpv_set_option_string (mpv, "log-file", "~~/mpv.log");
+        mpv_set_option_string (mpv, "msg-level", "all=trace");
+    } else if (brls::Logger::getLogLevel () >= brls::LogLevel::LOG_DEBUG) {
+        mpv_set_option_string (mpv, "log-file", "~~/mpv.log");
+        mpv_set_option_string (mpv, "msg-level", "all=debug");
+    }
+
     mpvSetOptionString(mpv, "gpu-shader-cache-dir", fmt::format("{}/cache", confDir).c_str());
     mpvSetOptionString(mpv, "ytdl", "no");
     mpvSetOptionString(mpv, "audio-channels", "stereo");

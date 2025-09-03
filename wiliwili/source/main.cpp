@@ -37,27 +37,16 @@ int main(int argc, char* argv[]) {
 #ifdef __WINRT__
     setlocale(LC_ALL, ".utf8");
 
-    //TODO use config @ikas
-    brls::Logger::setLogLevel(brls::LogLevel::LOG_DEBUG);
-    brls::Application::enableDebuggingView(false);
-
-    auto appLocal = winrt::Windows::Storage::AppDataPaths::GetDefault().LocalAppData();
-    auto const time = std::chrono::current_zone()->to_local(std::chrono::system_clock::now());
-    auto logFile = std::format("{}\\wiliwili.{:%Y-%m-%d-%H-%M-%S}.log", winrt::to_string(appLocal), time);
-    brls::Logger::setLogOutput(std::fopen(logFile.c_str(), "w+"));
-
-    if (IsDebuggerPresent()) {
-        brls::Logger::getLogEvent()->subscribe([](brls::Logger::TimePoint now, brls::LogLevel level, const std::string& log)
-            {
-                auto message = std::format(L"[{}] {}\n", (int)level, winrt::to_hstring(log));
-                OutputDebugString(message.c_str());
+#if _DEBUG
+    if (IsDebuggerPresent())
+    {
+        brls::Logger::getLogEvent()->subscribe([](brls::Logger::TimePoint now, brls::LogLevel level, const std::string& log) {
+            auto message=std::format(L"[{}] {}\n", (int)level, winrt::to_hstring(log));
+            OutputDebugString(message.c_str());
             });
     }
+#endif
 
-    auto cmdline = winrt::to_string(GetCommandLine());
-    brls::Logger::debug("app start,cmdline:{}", cmdline);
-
-    //for xbox 
     winrt::Windows::UI::Core::SystemNavigationManager::GetForCurrentView().BackRequested([](
         winrt::Windows::Foundation::IInspectable const,
         winrt::Windows::UI::Core::BackRequestedEventArgs const& args
@@ -65,10 +54,28 @@ int main(int argc, char* argv[]) {
             args.Handled(true);
         });
 
-    auto window = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread();
-    auto shiftKeyState= window.GetKeyState(winrt::Windows::System::VirtualKey::Shift);
-    if (((int)shiftKeyState & 1) == 1) {
-        brls::Application::enableDebuggingView(true);
+    bool enableDebug=false;
+#if _DEBUG
+    enableDebug=true;
+#endif 
+
+    for (int i=1; i < argc; i++)
+    {
+        if (std::strcmp(argv[i], "-d") == 0)
+        {
+            enableDebug=true;
+            brls::Application::enableDebuggingView(true);
+        }
+        //TODO
+    }
+
+    if (enableDebug)
+    {
+        brls::Logger::setLogLevel(brls::LogLevel::LOG_DEBUG);
+        auto appLocal=winrt::Windows::Storage::AppDataPaths::GetDefault().LocalAppData();
+        auto const time=std::chrono::current_zone()->to_local(std::chrono::system_clock::now());
+        auto logFile=std::format("{}\\wiliwili.{:%Y-%m-%d-%H-%M-%S}.log", winrt::to_string(appLocal), time);
+        brls::Logger::setLogOutput(std::fopen(logFile.c_str(), "w+"));
     }
 
 #else
