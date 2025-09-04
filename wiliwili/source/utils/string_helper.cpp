@@ -13,9 +13,11 @@
 #include "utils/string_helper.hpp"
 
 namespace wiliwili {
-
-std::string urlEncode(const std::string &in) { return cpr::util::urlEncode(in); }
-
+#if defined(__WINRT__)
+    std::string urlEncode(const std::string& in) { return std::string { cpr::util::urlEncode(in) };}
+#else
+    std::string urlEncode(const std::string &in) { return cpr::util::urlEncode(in); }
+#endif
 std::string base64Encode(const std::string &data) {
     size_t in_len  = data.size();
     size_t out_len = ((in_len / 3) + (in_len % 3 ? 1 : 0)) * 4 + 1;
