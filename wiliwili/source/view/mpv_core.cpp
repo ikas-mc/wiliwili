@@ -14,6 +14,122 @@
 #include "utils/crash_helper.hpp"
 #include "view/mpv_core.hpp"
 
+#ifdef __WINRT__
+#include <winrt/Windows.Graphics.Display.Core.h>
+#include <winrt/Windows.System.Profile.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <mutex>
+
+namespace {
+using namespace winrt::Windows::Graphics::Display::Core;
+using winrt::Windows::System::Profile::AnalyticsInfo;
+
+class HdrDisplayManager {
+public:
+    HdrDisplayManager() {
+        try {
+            if (AnalyticsInfo::VersionInfo().DeviceFamily() == L"Windows.Xbox") {
+                hdmi = HdmiDisplayInformation::GetForCurrentView();
+                if (hdmi) {
+                    defaultMode = hdmi.GetCurrentDisplayMode();
+                    defaultCaptured = defaultMode ? true : false;
+                }
+            }
+        } catch (...) {
+            // 忽略
+        }
+    }
+
+    void Ensure(bool enableHdr) {
+        std::scoped_lock lock(mtx);
+        if (!hdmi) return;
+        try {
+            if (enableHdr) {
+                if (hdrActive || hdrPending) return;
+                // 选择支持 SMPTE 2084 (HDR10) 且刷新率最高的模式
+                HdmiDisplayMode best{ nullptr };
+                double maxRr = -1.0;
+                auto modes = hdmi.GetSupportedDisplayModes();
+                for (auto const& m : modes) {
+                    if (m.IsSmpte2084Supported()) {
+                        if (m.RefreshRate() > maxRr) {
+                            best = m;
+                            maxRr = m.RefreshRate();
+                        }
+                    }
+                }
+                if (!best) {
+                    brls::Logger::info("UWP HDR: no SMPTE 2084 supported display mode found; skipping HDR switch");
+                    return;
+                }
+                // 在选定的模式上请求启用 HDR10 (该模式必须支持 SMPTE 2084)
+                hdrPending = true;
+                auto op = hdmi.RequestSetCurrentDisplayModeAsync(best, HdmiDisplayHdrOption::Eotf2084);
+                op.Completed([this](auto const& async, auto status) {
+                    std::scoped_lock lock(this->mtx);
+                    try {
+                        bool ok = (status == winrt::Windows::Foundation::AsyncStatus::Completed) ? async.GetResults() : false;
+                        int okInt = ok ? 1 : 0;
+                        brls::Logger::info("{}", fmt::format("UWP HDR: HDR request completed, ok={}, status={}", okInt, (int)status));
+                        this->hdrActive = ok;
+                    } catch (winrt::hresult_error const& e) {
+                        brls::Logger::error("{}", fmt::format("UWP HDR: HDR request threw: 0x{:08X} {}", (uint32_t)e.code().value, winrt::to_string(e.message())));
+                        this->hdrActive = false;
+                    } catch (...) {
+                        brls::Logger::error("UWP HDR: HDR request threw unknown exception");
+                        this->hdrActive = false;
+                    }
+                    this->hdrPending = false;
+                });
+            } else {
+                if (!hdrActive && !hdrPending) return;
+                hdrPending = true;
+                auto op = hdmi.SetDefaultDisplayModeAsync();
+                op.Completed([this](auto const& async, auto status) {
+                    std::scoped_lock lock(this->mtx);
+                    (void)async;
+                    brls::Logger::info("UWP HDR: SetDefaultDisplayModeAsync completed (status={})", (int)status);
+                    this->hdrActive = false;
+                    this->hdrPending = false;
+                });
+            }
+        } catch (...) {
+            // 忽略错误
+        }
+    }
+
+    void ResetToDefault() {
+        std::scoped_lock lock(mtx);
+        if (!hdmi) return;
+        try {
+            hdrPending = true;
+            auto op = hdmi.SetDefaultDisplayModeAsync();
+            op.Completed([this](auto const& async, auto status) {
+                std::scoped_lock lock(this->mtx);
+                (void)async;
+                this->hdrActive = false;
+                this->hdrPending = false;
+            });
+        } catch (...) {
+            hdrActive = false;
+            hdrPending = false;
+        }
+    }
+
+private:
+    HdmiDisplayInformation hdmi{ nullptr };
+    HdmiDisplayMode defaultMode{ nullptr };
+    bool defaultCaptured{ false };
+    bool hdrActive{ false };
+    bool hdrPending{ false };
+    std::mutex mtx;
+};
+
+static HdrDisplayManager g_hdrDisplayManager;
+}
+#endif
+
 #ifdef MPV_BUNDLE_DLL
 mpvSetOptionStringFunc mpvSetOptionString;
 mpvObservePropertyFunc mpvObserveProperty;
@@ -171,6 +287,61 @@ static inline void check_error(int status) {
         brls::Logger::error("MPV ERROR ====> {}", mpvErrorString(status));
     }
 }
+
+#ifdef __WINRT__
+static std::string to_lower_copy(std::string s) {
+    for (auto& c : s) c = (char)std::tolower((unsigned char)c);
+    return s;
+}
+
+bool MPVCore::detectHdrContent() {
+    // 先获取所有 video-params 信息用于调试
+    auto videoParams = getNodeMap("video-params");
+
+    // 输出所有可用的参数
+    brls::Logger::info("=== All video-params ===");
+    for (const auto& [key, node] : videoParams) {
+        std::string value;
+        if (node.format == MPV_FORMAT_STRING && node.u.string) {
+            value = node.u.string;
+        } else if (node.format == MPV_FORMAT_INT64) {
+            value = std::to_string(node.u.int64);
+        } else if (node.format == MPV_FORMAT_DOUBLE) {
+            value = std::to_string(node.u.double_);
+        } else if (node.format == MPV_FORMAT_FLAG) {
+            value = node.u.flag ? "true" : "false";
+        } else {
+            value = fmt::format("(type={})", (int)node.format);
+        }
+        brls::Logger::info("  {}: {}", key, value);
+    }
+
+    // 启发式方法：HDR10 通常使用 BT.2020 色域和 SMPTE 2084 (PQ) 伽马曲线；HLG 使用 arib-std-b67
+    std::string gamma = getString("video-params/gamma");
+    std::string primaries = getString("video-params/primaries");
+
+    brls::Logger::info("HDR Detection - gamma: '{}', primaries: '{}'", gamma, primaries);
+
+    auto g = to_lower_copy(gamma);
+    auto p = to_lower_copy(primaries);
+    bool isHdrgamma = (g.find("2084") != std::string::npos) || (g.find("pq") != std::string::npos) || (g.find("hlg") != std::string::npos) || (g.find("arib-std-b67") != std::string::npos);
+    bool isBt2020 = (p.find("2020") != std::string::npos) || (p.find("bt.2020") != std::string::npos);
+    return isHdrgamma && isBt2020;
+}
+
+void MPVCore::updateHdrDisplayMode() {
+    // 仅在内容已加载时考虑。暂停状态被视作播放中。
+    bool isActive = !video_stopped; // 播放中或暂停中
+    bool isHdr = detectHdrContent();
+    last_hdr_content = isHdr;
+    bool wantHdr = isActive && isHdr;
+    if (wantHdr != last_hdr_applied) {
+        brls::Logger::info("UWP HDR: switching display mode, enable={} (active={}, hdr={})", wantHdr, isActive, isHdr);
+        g_hdrDisplayManager.Ensure(wantHdr);
+        last_hdr_applied = wantHdr;
+    }
+}
+#endif
 
 #if defined(BOREALIS_USE_OPENGL) && !defined(MPV_SW_RENDER)
 static void *get_proc_address(void *unused, const char *name) {
@@ -949,6 +1120,9 @@ void MPVCore::eventMainLoop() {
                     mpvCoreEvent.fire(MpvEventEnum::MPV_PAUSE);
                     this->pause();
                 }
+#ifdef __WINRT__
+                updateHdrDisplayMode();
+#endif
                 break;
             case MPV_EVENT_START_FILE:
                 // event 6: 开始加载文件
@@ -958,18 +1132,28 @@ void MPVCore::eventMainLoop() {
                 mpvCoreEvent.fire(MpvEventEnum::START_FILE);
 
                 mpvCoreEvent.fire(MpvEventEnum::LOADING_START);
+#ifdef __WINRT__
+                updateHdrDisplayMode();
+#endif
                 break;
             case MPV_EVENT_PLAYBACK_RESTART:
                 // event 21: 开始播放文件（一般是播放或调整进度结束之后触发）
                 brls::Logger::info("========> MPV_EVENT_PLAYBACK_RESTART");
                 video_stopped = false;
                 mpvCoreEvent.fire(MpvEventEnum::LOADING_END);
+#ifdef __WINRT__
+                updateHdrDisplayMode();
+#endif
                 break;
             case MPV_EVENT_END_FILE: {
                 // event 7: 文件播放结束
                 brls::Logger::info("========> MPV_STOP");
                 mpvCoreEvent.fire(MpvEventEnum::MPV_STOP);
                 video_stopped = true;
+#ifdef __WINRT__
+                g_hdrDisplayManager.ResetToDefault();
+                last_hdr_applied = false;
+#endif
                 auto node     = (mpv_event_end_file *)event->data;
                 if (node->reason == MPV_END_FILE_REASON_ERROR) {
                     mpv_error_code = node->error;
@@ -1115,6 +1299,9 @@ void MPVCore::eventMainLoop() {
                             brls::Logger::info("========> RESUME");
                             mpvCoreEvent.fire(MpvEventEnum::MPV_RESUME);
                         }
+#ifdef __WINRT__
+                        updateHdrDisplayMode();
+#endif
                         break;
                     case 13:
                         if (data) video_stopped = *(int *)data;

@@ -402,6 +402,12 @@ private:
     mpv_handle *mpv                 = nullptr;
     mpv_render_context *mpv_context = nullptr;
     brls::Rect rect                 = {0, 0, 1920, 1080};
+#ifdef __WINRT__
+    bool last_hdr_content           = false;  // 当前内容是否为HDR
+    bool last_hdr_applied           = false;  // 是否已切换至HDR显示模式
+    void updateHdrDisplayMode();
+    bool detectHdrContent();
+#endif
 #ifdef MPV_SW_RENDER
     const int PIXCEL_SIZE          = 4;
     int nvg_image                  = 0;
