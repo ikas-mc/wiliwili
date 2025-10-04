@@ -41,21 +41,29 @@ public:
         }
     }
 
-    void Ensure(bool enableHdr) {
+    void Ensure(bool enableHdr, const HdmiDisplayHdr2086Metadata* metadata = nullptr) {
         std::scoped_lock lock(mtx);
         if (!hdmi) return;
         try {
             if (enableHdr) {
                 if (hdrActive || hdrPending) return;
-                // 选择支持 SMPTE 2084 (HDR10) 且刷新率最高的模式
+                // 选择支持 HDR 的最佳模式：优先分辨率，其次刷新率
                 HdmiDisplayMode best{ nullptr };
-                double maxRr = -1.0;
+                uint32_t maxResolution = 0;
+                double maxRefreshRate = -1.0;
                 auto modes = hdmi.GetSupportedDisplayModes();
+                brls::Logger::info("{}", fmt::format("UWP HDR: Scanning {} display modes", (int)modes.Size()));
                 for (auto const& m : modes) {
                     if (m.IsSmpte2084Supported()) {
-                        if (m.RefreshRate() > maxRr) {
+                        uint32_t w = m.ResolutionWidthInRawPixels();
+                        uint32_t h = m.ResolutionHeightInRawPixels();
+                        uint32_t resolution = w * h;
+                        double rr = m.RefreshRate();
+                        brls::Logger::info("{}", fmt::format("UWP HDR: Mode {}x{}@{}Hz supports HDR", (int)w, (int)h, rr));
+                        if (!best || resolution > maxResolution || (resolution == maxResolution && rr > maxRefreshRate)) {
                             best = m;
-                            maxRr = m.RefreshRate();
+                            maxResolution = resolution;
+                            maxRefreshRate = rr;
                         }
                     }
                 }
@@ -63,18 +71,23 @@ public:
                     brls::Logger::info("UWP HDR: no SMPTE 2084 supported display mode found; skipping HDR switch");
                     return;
                 }
+                brls::Logger::info("UWP HDR: Selected mode {}x{}@{}Hz", (int)best.ResolutionWidthInRawPixels(), (int)best.ResolutionHeightInRawPixels(), best.RefreshRate());
                 // 在选定的模式上请求启用 HDR10 (该模式必须支持 SMPTE 2084)
                 hdrPending = true;
-                auto op = hdmi.RequestSetCurrentDisplayModeAsync(best, HdmiDisplayHdrOption::Eotf2084);
+                winrt::Windows::Foundation::IAsyncOperation<bool> op{ nullptr };
+                if (metadata) {
+                    op = hdmi.RequestSetCurrentDisplayModeAsync(best, HdmiDisplayHdrOption::Eotf2084, *metadata);
+                } else {
+                    op = hdmi.RequestSetCurrentDisplayModeAsync(best, HdmiDisplayHdrOption::Eotf2084);
+                }
                 op.Completed([this](auto const& async, auto status) {
                     std::scoped_lock lock(this->mtx);
                     try {
                         bool ok = (status == winrt::Windows::Foundation::AsyncStatus::Completed) ? async.GetResults() : false;
-                        int okInt = ok ? 1 : 0;
-                        brls::Logger::info("{}", fmt::format("UWP HDR: HDR request completed, ok={}, status={}", okInt, (int)status));
+                        brls::Logger::info("UWP HDR: HDR request completed, ok={}, status={}", ok ? 1 : 0, (int)status);
                         this->hdrActive = ok;
                     } catch (winrt::hresult_error const& e) {
-                        brls::Logger::error("{}", fmt::format("UWP HDR: HDR request threw: 0x{:08X} {}", (uint32_t)e.code().value, winrt::to_string(e.message())));
+                        brls::Logger::error("UWP HDR: HDR request threw: 0x{:08X} {}", (uint32_t)e.code().value, winrt::to_string(e.message()));
                         this->hdrActive = false;
                     } catch (...) {
                         brls::Logger::error("UWP HDR: HDR request threw unknown exception");
@@ -311,22 +324,52 @@ bool MPVCore::detectHdrContent() {
         } else if (node.format == MPV_FORMAT_FLAG) {
             value = node.u.flag ? "true" : "false";
         } else {
-            value = fmt::format("(type={})", (int)node.format);
+            value = "(type=" + std::to_string((int)node.format) + ")";
         }
         brls::Logger::info("  {}: {}", key, value);
     }
 
-    // 启发式方法：HDR10 通常使用 BT.2020 色域和 SMPTE 2084 (PQ) 伽马曲线；HLG 使用 arib-std-b67
+    // 增强的 HDR 检测：综合多个指标判断
     std::string gamma = getString("video-params/gamma");
     std::string primaries = getString("video-params/primaries");
+    std::string pixelformat = getString("video-params/pixelformat");
+    std::string hw_pixelformat = getString("video-params/hw-pixelformat");
+    double sig_peak = getDouble("video-params/sig-peak");
 
-    brls::Logger::info("HDR Detection - gamma: '{}', primaries: '{}'", gamma, primaries);
+    brls::Logger::info("HDR Detection - gamma: '{}', primaries: '{}', pixelformat: '{}', hw-pixelformat: '{}', sig-peak: {}", 
+                      gamma, primaries, pixelformat, hw_pixelformat, sig_peak);
 
     auto g = to_lower_copy(gamma);
     auto p = to_lower_copy(primaries);
-    bool isHdrgamma = (g.find("2084") != std::string::npos) || (g.find("pq") != std::string::npos) || (g.find("hlg") != std::string::npos) || (g.find("arib-std-b67") != std::string::npos);
-    bool isBt2020 = (p.find("2020") != std::string::npos) || (p.find("bt.2020") != std::string::npos);
-    return isHdrgamma && isBt2020;
+    auto pf = to_lower_copy(pixelformat);
+    auto hwpf = to_lower_copy(hw_pixelformat);
+
+    // 检测 HDR 伽马曲线
+    bool isHdrGamma = (g.find("2084") != std::string::npos) || 
+                      (g.find("pq") != std::string::npos) || 
+                      (g.find("hlg") != std::string::npos) || 
+                      (g.find("arib-std-b67") != std::string::npos);
+
+    // 检测广色域
+    bool isBt2020 = (p.find("2020") != std::string::npos) || 
+                    (p.find("bt.2020") != std::string::npos);
+
+    // 检测 10 位像素格式（HDR 通常使用 10 位）
+    bool is10bit = (pf.find("p010") != std::string::npos) || 
+                   (pf.find("p016") != std::string::npos) ||
+                   (hwpf.find("p010") != std::string::npos) || 
+                   (hwpf.find("p016") != std::string::npos);
+
+    // 检测信号峰值（HDR 通常 > 1.0）
+    bool hasHdrPeak = sig_peak > 1.2;
+
+    // 综合判断：需要满足伽马+色域，或者 10位格式+峰值
+    bool isHdr = (isHdrGamma && isBt2020) || (is10bit && hasHdrPeak);
+
+    brls::Logger::info("HDR Detection Result - isHdrGamma: {}, isBt2020: {}, is10bit: {}, hasHdrPeak: {}, final: {}", 
+                      isHdrGamma, isBt2020, is10bit, hasHdrPeak, isHdr);
+
+    return isHdr;
 }
 
 void MPVCore::updateHdrDisplayMode() {
@@ -337,7 +380,58 @@ void MPVCore::updateHdrDisplayMode() {
     bool wantHdr = isActive && isHdr;
     if (wantHdr != last_hdr_applied) {
         brls::Logger::info("UWP HDR: switching display mode, enable={} (active={}, hdr={})", wantHdr, isActive, isHdr);
-        g_hdrDisplayManager.Ensure(wantHdr);
+        if (wantHdr) {
+            HdmiDisplayHdr2086Metadata metadata{};
+            double max_luma = getDouble("video-params/max-luma"); // nits
+            double min_luma = getDouble("video-params/min-luma"); // nits
+            double max_cll = getDouble("video-params/max-cll");   // nits
+            double max_fall = getDouble("video-params/max-fall"); // nits
+
+            auto clamp16 = [](double v) -> uint16_t {
+                if (v < 0.0) v = 0.0;
+                if (v > 65535.0) v = 65535.0;
+                return static_cast<uint16_t>(v);
+            };
+
+            // CTA-861 values: MaxMasteringLuminance in 1 nit steps (uint16), MinMasteringLuminance in 0.0001 nit steps (uint16)
+            if (max_luma > 0) {
+                metadata.MaxMasteringLuminance = clamp16(max_luma);
+            } else {
+                metadata.MaxMasteringLuminance = 1000; // 默认 1000 nit
+            }
+
+            if (min_luma > 0) {
+                metadata.MinMasteringLuminance = clamp16(min_luma * 10000.0);
+            } else {
+                metadata.MinMasteringLuminance = 1; // 默认 0.0001 nit
+            }
+
+            // MaxCLL/MaxFALL in 1 nit steps
+            if (max_cll > 0) {
+                metadata.MaxContentLightLevel = clamp16(max_cll);
+            }
+
+            if (max_fall > 0) {
+                metadata.MaxFrameAverageLightLevel = clamp16(max_fall);
+            }
+
+            // BT.2020 标准色度坐标
+            metadata.RedPrimaryX = 34000;    // 0.708
+            metadata.RedPrimaryY = 16500;    // 0.292
+            metadata.GreenPrimaryX = 8500;   // 0.170
+            metadata.GreenPrimaryY = 39000;  // 0.797
+            metadata.BluePrimaryX = 7500;    // 0.131
+            metadata.BluePrimaryY = 3000;    // 0.046
+            metadata.WhitePointX = 15635;    // 0.3127
+            metadata.WhitePointY = 16450;    // 0.3290
+
+            brls::Logger::info("UWP HDR: Using metadata - MaxLuma: {}, MinLuma: {}, MaxCLL: {}, MaxFALL: {}", 
+                                max_luma, min_luma, max_cll, max_fall);
+
+            g_hdrDisplayManager.Ensure(true, &metadata);
+        } else {
+            g_hdrDisplayManager.Ensure(false, nullptr);
+        }
         last_hdr_applied = wantHdr;
     }
 }
