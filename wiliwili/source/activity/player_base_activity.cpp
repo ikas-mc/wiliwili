@@ -374,6 +374,34 @@ void BasePlayerActivity::setCommonData() {
             this->setVideoQuality();
         } else if (event == "REQUEST_CAST_URL") {
             this->requestCastUrl();
+#ifdef __WINRT__
+        } else if (event == "UWP_ENTERED_BACKGROUND") {
+            // Rebuild links with medium audio quality while keeping position
+            this->updateVideoLink();
+        } else if (event == "UWP_LEAVING_BACKGROUND") {
+            // Restore preferred quality when returning to foreground
+            this->updateVideoLink();
+        } else if (event == "SMTC_NEXT") {
+            this->onIndexChangeToNext();
+        } else if (event == "SMTC_PREVIOUS") {
+            // Try switch to previous part/episode depending on activity type
+            if (auto* self = dynamic_cast<PlayerActivity*>(this)) {
+                if (self->videoDetailPage.page > 1) {
+                    this->onIndexChange(self->videoDetailPage.page - 2);
+                }
+            } else if (auto* season = dynamic_cast<PlayerSeasonActivity*>(this)) {
+                // For season, previous = current index - 1
+                if (season->episodeResult.index > 0) {
+                    this->onIndexChange(season->episodeResult.index - 1);
+                }
+            }
+        } else if (event == "SMTC_PLAY") {
+            MPVCore::instance().resume();
+        } else if (event == "SMTC_PAUSE") {
+            MPVCore::instance().pause();
+        } else if (event == "SMTC_STOP") {
+            MPVCore::instance().stop();
+#endif
         }
     });
 
@@ -548,7 +576,12 @@ void BasePlayerActivity::onVideoPlayUrl(const bilibili::VideoUrlResult& result) 
         customAspect = ProgramConfig::instance().getSettingItem(SettingItem::PLAYER_ASPECT, std::string{"-1"});
     }
     MPVCore::instance().setAspect(customAspect);
-
+#ifdef __WINRT__
+    // Update SMTC metadata with current video info
+    try {
+        MPVCore::instance().setSMTCMetadata(videoDetailResult.title, videoDetailResult.owner.name, videoDetailResult.pic);
+    } catch (...) {}
+#endif
     // 当要跳转的进度距离尾部只有 5s，就重新播放
     if (start > 0 && abs(time_sec - start) <= 5) start = 0;
 

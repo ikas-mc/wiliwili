@@ -805,6 +805,43 @@ void MPVCore::init() {
     });
 
     brls::Application::getExitEvent()->subscribe([]() { disableDimming(false); });
+#ifdef __WINRT__
+    try {
+        winrt::Windows::ApplicationModel::Core::CoreApplication::EnteredBackground([this](auto const&, auto const&) {
+            this->setVideoEnabled(false);
+            this->uwp_in_background = true;
+            if (APP_E) APP_E->fire("UWP_ENTERED_BACKGROUND", nullptr);
+        });
+        winrt::Windows::ApplicationModel::Core::CoreApplication::LeavingBackground([this](auto const&, auto const&) {
+            this->setVideoEnabled(true);
+            this->uwp_in_background = false;
+            if (APP_E) APP_E->fire("UWP_LEAVING_BACKGROUND", nullptr);
+        });
+        // Initialize SMTC for manual background audio integration
+        this->initSMTC();
+        // Subscribe to internal MPV events to reflect in SMTC
+        this->smtcEventSubscription = this->mpvCoreEvent.subscribe([this](MpvEventEnum e){
+            switch (e) {
+                case MpvEventEnum::MPV_RESUME:
+                case MpvEventEnum::MPV_PAUSE:
+                case MpvEventEnum::MPV_STOP:
+                case MpvEventEnum::START_FILE:
+                case MpvEventEnum::END_OF_FILE:
+                    this->updateSMTCStatus();
+                    this->updateSMTCTimeline();
+                    break;
+                case MpvEventEnum::UPDATE_PROGRESS:
+                case MpvEventEnum::UPDATE_DURATION:
+                    this->updateSMTCTimeline();
+                    break;
+                default:
+                    break;
+            }
+        });
+    } catch (...) {
+        // ignore if not available
+    }
+#endif
 
     this->initializeVideo();
 }
@@ -819,6 +856,17 @@ void MPVCore::clean() {
     check_error(mpvCommandString(this->mpv, "quit"));
 
     brls::Application::getWindowFocusChangedEvent()->unsubscribe(focusSubscription);
+
+#ifdef __WINRT__
+    try {
+        if (smtc) {
+            smtc.ButtonPressed(smtcButtonToken);
+        }
+    } catch (...) {}
+    try {
+        this->mpvCoreEvent.unsubscribe(smtcEventSubscription);
+    } catch (...) {}
+#endif
 
     brls::Logger::info("uninitialize Video");
     this->uninitializeVideo();
@@ -1487,11 +1535,35 @@ void MPVCore::setVolume(const std::string &value) {
 
 int64_t MPVCore::getVolume() const { return this->volume; }
 
-void MPVCore::resume() { command_async("set", "pause", "no"); }
+void MPVCore::resume() { command_async("set", "pause", "no");
+#ifdef __WINRT__
+    try {
+        updateSMTCStatus();
+        updateSMTCTimeline();
+        if (smtc) smtc.PlaybackStatus(winrt::Windows::Media::MediaPlaybackStatus::Playing);
+    } catch (...) {}
+#endif
+}
 
-void MPVCore::pause() { command_async("set", "pause", "yes"); }
+void MPVCore::pause() { command_async("set", "pause", "yes");
+#ifdef __WINRT__
+    try {
+        updateSMTCStatus();
+        updateSMTCTimeline();
+        if (smtc) smtc.PlaybackStatus(winrt::Windows::Media::MediaPlaybackStatus::Paused);
+    } catch (...) {}
+#endif
+}
 
-void MPVCore::stop() { command_async("stop"); }
+void MPVCore::stop() { command_async("stop");
+#ifdef __WINRT__
+    try {
+        updateSMTCStatus();
+        updateSMTCTimeline();
+        if (smtc) smtc.PlaybackStatus(winrt::Windows::Media::MediaPlaybackStatus::Stopped);
+    } catch (...) {}
+#endif
+}
 
 void MPVCore::seek(int64_t p) { command_async("seek", p, "absolute"); }
 
@@ -1541,6 +1613,117 @@ void MPVCore::setMirror(bool value) {
     setHwdecCopyMode(value);
 #endif
 }
+
+void MPVCore::setVideoEnabled(bool enable) {
+    // When disabled, stop video decoding/fetching. Audio continues.
+    if (!mpv) return;
+    if (enable) {
+        command_async("set", "vid", "auto");
+    } else {
+        command_async("set", "vid", "no");
+    }
+}
+
+#ifdef __WINRT__
+void MPVCore::initSMTC() {
+    using namespace winrt::Windows::Media;
+    try {
+        smtc = SystemMediaTransportControls::GetForCurrentView();
+        if (!smtc) return;
+        smtc.IsEnabled(true);
+        smtc.IsPlayEnabled(true);
+        smtc.IsPauseEnabled(true);
+        smtc.IsStopEnabled(true);
+        smtc.IsNextEnabled(true);
+        smtc.IsPreviousEnabled(true);
+        smtcButtonToken = smtc.ButtonPressed([this](auto const&, SystemMediaTransportControlsButtonPressedEventArgs const& e){
+            switch (e.Button()) {
+                case SystemMediaTransportControlsButton::Play:
+                    this->resume();
+                    if (APP_E) APP_E->fire("SMTC_PLAY", nullptr);
+                    break;
+                case SystemMediaTransportControlsButton::Pause:
+                    this->pause();
+                    if (APP_E) APP_E->fire("SMTC_PAUSE", nullptr);
+                    break;
+                case SystemMediaTransportControlsButton::Stop:
+                    this->stop();
+                    if (APP_E) APP_E->fire("SMTC_STOP", nullptr);
+                    break;
+                case SystemMediaTransportControlsButton::Next:
+                    if (APP_E) APP_E->fire("SMTC_NEXT", nullptr);
+                    break;
+                case SystemMediaTransportControlsButton::Previous:
+                    if (APP_E) APP_E->fire("SMTC_PREVIOUS", nullptr);
+                    break;
+                default:
+                    break;
+            }
+        });
+        updateSMTCStatus();
+        updateSMTCTimeline();
+    } catch (...) {
+        // ignore
+    }
+}
+
+void MPVCore::updateSMTCStatus() {
+    using namespace winrt::Windows::Media;
+    if (!smtc) return;
+    try {
+        if (video_stopped) {
+            smtc.PlaybackStatus(winrt::Windows::Media::MediaPlaybackStatus::Stopped);
+        } else if (video_paused) {
+            smtc.PlaybackStatus(winrt::Windows::Media::MediaPlaybackStatus::Paused);
+        } else if (video_playing) {
+            smtc.PlaybackStatus(winrt::Windows::Media::MediaPlaybackStatus::Playing);
+        } else {
+            smtc.PlaybackStatus(winrt::Windows::Media::MediaPlaybackStatus::Closed);
+        }
+    } catch (...) {
+    }
+}
+
+void MPVCore::updateSMTCTimeline() {
+    using namespace winrt::Windows::Media;
+    using namespace winrt::Windows::Foundation;
+    if (!smtc) return;
+    try {
+        SystemMediaTransportControlsTimelineProperties tl{};
+        tl.StartTime(TimeSpan{0});
+        // duration is seconds; convert to 100-ns units
+        int64_t end100ns = (duration > 0 ? duration : 0) * 10000000LL;
+        int64_t pos100ns = (int64_t)(playback_time * 10000000.0);
+        tl.EndTime(TimeSpan{ end100ns });
+        tl.MinSeekTime(TimeSpan{0});
+        tl.MaxSeekTime(TimeSpan{ end100ns });
+        tl.Position(TimeSpan{ pos100ns });
+        smtc.UpdateTimelineProperties(tl);
+    } catch (...) {
+    }
+}
+
+void MPVCore::setSMTCMetadata(const std::string& title, const std::string& artist, const std::string& coverUrl) {
+    using namespace winrt::Windows::Media;
+    using namespace winrt::Windows::Foundation;
+    using namespace winrt::Windows::Storage::Streams;
+    if (!smtc) return;
+    try {
+        auto du = smtc.DisplayUpdater();
+        du.Type(MediaPlaybackType::Music);
+        auto props = du.MusicProperties();
+        props.Title(winrt::to_hstring(title));
+        props.Artist(winrt::to_hstring(artist));
+        if (!coverUrl.empty()) {
+            Uri uri{ winrt::to_hstring(coverUrl) };
+            auto thumb = RandomAccessStreamReference::CreateFromUri(uri);
+            du.Thumbnail(thumb);
+        }
+        du.Update();
+    } catch (...) {
+    }
+}
+#endif
 
 void MPVCore::setHwdecCopyMode(bool value) {
     // 如果正在使用硬解，那么将硬解更新为 auto-copy，避免直接硬解因为不经过 cpu 处理导致镜像翻转、滤镜无效

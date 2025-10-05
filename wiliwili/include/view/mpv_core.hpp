@@ -14,6 +14,9 @@
 #include <borealis/core/logger.hpp>
 #include <mpv/client.h>
 #include <mpv/render.h>
+#ifdef __WINRT__
+#include <winrt/Windows.Media.h>
+#endif
 #if defined(MPV_SW_RENDER)
 #elif defined(BOREALIS_USE_DEKO3D)
 #include <mpv/render_dk3d.h>
@@ -229,6 +232,14 @@ public:
 
     void setMirror(bool value);
 
+    // Enable/disable video decoding and fetching; when disabled, keep audio-only playback.
+    void setVideoEnabled(bool enable);
+#ifdef __WINRT__
+    bool isUwpInBackground() const { return uwp_in_background; }
+    void setSMTCMetadata(const std::string& title, const std::string& artist, const std::string& coverUrl);
+#endif
+
+
     /**
      * 设置视频亮度
      * @param value [-100, 100]
@@ -407,6 +418,14 @@ private:
     bool last_hdr_applied           = false;  // 是否已切换至HDR显示模式
     void updateHdrDisplayMode();
     bool detectHdrContent();
+    // SMTC integration (UWP only)
+    winrt::Windows::Media::SystemMediaTransportControls smtc{ nullptr };
+    brls::Event<MpvEventEnum>::Subscription smtcEventSubscription;
+    winrt::event_token smtcButtonToken{};
+    bool uwp_in_background = false;
+    void initSMTC();
+    void updateSMTCStatus();
+    void updateSMTCTimeline();
 #endif
 #ifdef MPV_SW_RENDER
     const int PIXCEL_SIZE          = 4;
