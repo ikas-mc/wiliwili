@@ -35,15 +35,15 @@
 
 using namespace brls::literals;
 
-const std::string OPENSOURCE =
+const std::string_view OPENSOURCE =
     "--------------------------------\n"
-    "FFmpeg\n"
+    "FFmpeg {}\n"
     "--------------------------------\n"
     "Official site:    https://www.ffmpeg.org\n\n"
     "Copyright (c) FFmpeg developers and contributors.\n\n"
     "Licensed under LGPLv2.1 or later\n\n\n"
     "--------------------------------\n"
-    "mpv\n"
+    "{}\n"
     "--------------------------------\n"
     "Official site:    https://mpv.io\n\n"
     "Copyright (c) mpv developers and contributors.\n\n"
@@ -274,7 +274,9 @@ void SettingActivity::onContentAvailable() {
                                + " (GXM)"
 #endif
     );
-    labelOpensource->setText(OPENSOURCE);
+    auto& mpv = MPVCore::instance();
+    labelOpensource->setText(fmt::format(fmt::runtime(OPENSOURCE),
+        mpv.getString("ffmpeg-version"), mpv.getString("mpv-version")));
 
     /// Quit APP
 #ifdef IOS
@@ -551,7 +553,7 @@ void SettingActivity::onContentAvailable() {
     auto bandwidthOption = conf.getOptionData(SettingItem::AUDIO_QUALITY);
     selectorQuality->init(
         "wiliwili/setting/app/playback/audio_quality"_i18n,
-        {"wiliwili/home/common/high"_i18n, "wiliwili/home/common/medium"_i18n, "wiliwili/home/common/low"_i18n},
+        {"wiliwili/setting/app/playback/dolby"_i18n, "wiliwili/setting/app/playback/hi_res"_i18n, "wiliwili/home/common/high"_i18n, "wiliwili/home/common/medium"_i18n, "wiliwili/home/common/low"_i18n},
         conf.getIntOptionIndex(SettingItem::AUDIO_QUALITY), [bandwidthOption](int data) {
             ProgramConfig::instance().setSettingItem(SettingItem::AUDIO_QUALITY, bandwidthOption.rawOptionList[data]);
             bilibili::BilibiliClient::AUDIO_QUALITY = bandwidthOption.rawOptionList[data];

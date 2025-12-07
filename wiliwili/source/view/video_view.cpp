@@ -94,8 +94,7 @@ VideoView::VideoView() {
         "\uE08E", brls::ControllerButton::BUTTON_RB,
         [this](brls::View* view) -> bool {
             CHECK_OSD(true);
-            brls::ControllerState state{};
-            input->updateUnifiedControllerState(&state);
+            auto& state  = brls::Application::getControllerState();
             bool buttonY =
                 brls::Application::isSwapInputKeys() ? state.buttons[brls::BUTTON_X] : state.buttons[brls::BUTTON_Y];
             if (buttonY) {
@@ -125,29 +124,18 @@ VideoView::VideoView() {
     };
     this->registerAction("toggleDanmaku", brls::ControllerButton::BUTTON_X, danmakuFunc, true);
 
-    // 升高音量
     this->registerAction(
-        "volumeUp", brls::ControllerButton::BUTTON_NAV_UP,
+        "volume", brls::ControllerButton::BUTTON_RT,
         [this](brls::View* view) -> bool {
             CHECK_OSD(true);
-            brls::ControllerState state{};
-            input->updateUnifiedControllerState(&state);
-            if (state.buttons[brls::BUTTON_RT]) {
+            auto &state = brls::Application::getControllerState();
+            if (state.buttons[brls::BUTTON_NAV_UP]) {
+                // 升高音量
                 this->requestVolume((int)MPVCore::instance().volume + 5, 400);
                 return true;
             }
-            return false;
-        },
-        true, true);
-
-    // 降低音量
-    this->registerAction(
-        "volumeDown", brls::ControllerButton::BUTTON_NAV_DOWN,
-        [this](brls::View* view) -> bool {
-            CHECK_OSD(true);
-            brls::ControllerState state{};
-            input->updateUnifiedControllerState(&state);
-            if (state.buttons[brls::BUTTON_RT]) {
+            if (state.buttons[brls::BUTTON_NAV_DOWN]) {
+                // 降低音量
                 this->requestVolume((int)MPVCore::instance().volume - 5, 400);
                 return true;
             }
@@ -1037,9 +1025,10 @@ void VideoView::setLiveMode() {
     centerStatusLabel->setVisibility(brls::Visibility::GONE);
     rightStatusLabel->setVisibility(brls::Visibility::GONE);
     _setTvControlMode(false);
-    // 在直播模式下隐藏进度条、倍速按钮
+    // 在直播模式下隐藏进度条、倍速按钮、投屏按钮
     hideVideoProgressSlider();
     hideVideoSpeedButton();
+    hideDLNAButton();
 }
 
 void VideoView::setTvControlMode(bool state) {
@@ -1365,8 +1354,7 @@ brls::View* VideoView::getNextFocus(brls::FocusDirection direction, View* curren
 
 void VideoView::buttonProcessing() {
     // 获取按键数据
-    brls::ControllerState state{};
-    input->updateUnifiedControllerState(&state);
+    auto state           = brls::Application::getControllerState();
     auto speedUpShortcut = ShortcutHelper::getVideoSpeedUp();
     bool shortcutPressed = input->getKeyboardKeyState(speedUpShortcut.code);
     if (shortcutPressed) {

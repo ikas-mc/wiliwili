@@ -195,8 +195,7 @@ void VideoProgressSlider::draw(NVGcontext* vg, float x, float y, float width, fl
 }
 
 void VideoProgressSlider::buttonsProcessing() {
-    brls::ControllerState state{};
-    input->updateUnifiedControllerState(&state);
+    auto& state        = brls::Application::getControllerState();
     static bool repeat = false;
 
     if (state.buttons[brls::BUTTON_NAV_RIGHT] && state.buttons[brls::BUTTON_NAV_LEFT]) return;
